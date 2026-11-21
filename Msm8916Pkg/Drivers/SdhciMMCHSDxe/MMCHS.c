@@ -1,4 +1,5 @@
 #include "MMCHS.h"
+#include <Library/DebugLib.h>
 
 STATIC struct mmc_device *
 PlatformCallbackInitSlot(struct mmc_config_data *config)
@@ -9,8 +10,14 @@ PlatformCallbackInitSlot(struct mmc_config_data *config)
   // Initialize MMC device
   struct mmc_device *dev = mmc_init(config);
   if (dev == NULL) {
+    DEBUG((DEBUG_ERROR, "MMCHS: slot %u init failed\n", config->slot));
     return NULL;
   }
+
+  DEBUG((DEBUG_ERROR, "MMCHS: slot %u ready: %u blocks of %u bytes\n",
+         config->slot,
+         (UINT32)(dev->card.capacity / dev->card.block_size),
+         (UINT32)dev->card.block_size));
 
   // Allocate instance
   Status = BioInstanceContructor(&Instance);
@@ -364,8 +371,10 @@ EFI_STATUS
 EFIAPI
 MMCHSInitialize(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 {
+  DEBUG((DEBUG_ERROR, "MMCHSInitialize: entering\n"));
   // let the target register MMC devices
   LibQcomTargetMmcSdhciInit(PlatformCallbackInitSlot);
+  DEBUG((DEBUG_ERROR, "MMCHSInitialize: done\n"));
 
   return EFI_SUCCESS;
 }

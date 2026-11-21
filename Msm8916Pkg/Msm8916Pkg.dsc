@@ -122,6 +122,8 @@
   SpmiLib|Msm8916Pkg/Drivers/SpmiDxe/SpmiImplLib.inf
   Pm8x41Lib|Msm8916Pkg/Drivers/Pm8x41Dxe/Pm8x41Lib.inf
   ClockLib|Msm8916Pkg/Drivers/ClockDxe/ClockImplLib.inf
+  GpioI2cLib|Msm8916Pkg/Library/GpioI2cLib/GpioI2cLib.inf
+  NonDiscoverableDeviceRegistrationLib|MdeModulePkg/Library/NonDiscoverableDeviceRegistrationLib/NonDiscoverableDeviceRegistrationLib.inf
 
 [LibraryClasses.common.UEFI_APPLICATION]
   # SoC Drivers
@@ -229,7 +231,7 @@
 
   # GUID of the UI app
   gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{ 0x21, 0xaa, 0x2c, 0x46, 0x14, 0x76, 0x03, 0x45, 0x83, 0x6e, 0x8a, 0xb6, 0xf4, 0x66, 0x23, 0x31 }
-  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|5
+  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|10
 
   gEfiMdeModulePkgTokenSpaceGuid.PcdResetOnMemoryTypeInformationChange|FALSE
 
@@ -242,7 +244,7 @@
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2f
 !if $(TARGET) == DEBUG
   gEfiMdePkgTokenSpaceGuid.PcdDebugClearMemoryValue|0xAF
-  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x800fee0f
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000000
 !else
   gEfiMdePkgTokenSpaceGuid.PcdDebugClearMemoryValue|0x00
   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x00000000
@@ -343,12 +345,19 @@
   #
   EmbeddedPkg/Drivers/VirtualKeyboardDxe/VirtualKeyboardDxe.inf
 
+  #
+  # Touch (Atmel maXTouch)
+  #
+  Msm8916Pkg/Drivers/AtmelMaXTouchDxe/AtmelMaXTouchDxe.inf
+
   Msm8916Pkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 
   #
   # USB Host Support
   #
+  Msm8916Pkg/Drivers/UsbHostDxe/UsbHostDxe.inf
   MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+  MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
   MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
 
   #

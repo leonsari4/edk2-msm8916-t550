@@ -1,0 +1,47 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = AtmelMaXTouchDxe
+  FILE_GUID                      = 7A3C9B2E-4F1D-4A8B-9C2E-1D3F5A7B9C0D
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = AtmelMaXTouchDxeInitialize
+
+[Sources.common]
+  AtmelMaXTouchDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+  Msm8916Pkg/Msm8916Pkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  DebugLib
+  IoLib
+  TimerLib
+  MemoryAllocationLib
+  UefiBootServicesTableLib
+  UefiLib
+  GpioTlmmLib
+  GpioI2cLib
+
+[FixedPcd]
+  gQcomTokenSpaceGuid.PcdTouchI2cSdaGpio
+  gQcomTokenSpaceGuid.PcdTouchI2cSclGpio
+  gQcomTokenSpaceGuid.PcdTouchI2cAddress
+  gQcomTokenSpaceGuid.PcdTouchIntGpio
+  gQcomTokenSpaceGuid.PcdTouchPowerEnableGpio
+  gQcomTokenSpaceGuid.PcdTouchResetGpio
+  gQcomTokenSpaceGuid.PcdTouchMaxX
+  gQcomTokenSpaceGuid.PcdTouchMaxY
+  gQcomTokenSpaceGuid.PcdTouchInvertX
+  gQcomTokenSpaceGuid.PcdTouchInvertY
+  gQcomTokenSpaceGuid.PcdTouchSwapXY
+
+[Protocols]
+  gEfiAbsolutePointerProtocolGuid
+  gEfiDevicePathProtocolGuid
+
+[Depex]
+  TRUE

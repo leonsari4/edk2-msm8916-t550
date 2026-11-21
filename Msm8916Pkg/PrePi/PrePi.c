@@ -10,6 +10,7 @@
 
 #include <Library/CacheMaintenanceLib.h>
 #include <Library/DebugAgentLib.h>
+#include <Library/DebugLib.h>
 #include <Library/PrePiLib.h>
 #include <Library/PrintLib.h>
 #include <Library/PrePiHobListPointerLib.h>
@@ -213,7 +214,9 @@ PrePiMain (
   ASSERT_EFI_ERROR (Status);
 
   // Load the DXE Core and transfer control to it
+  DEBUG((DEBUG_ERROR, "PrePi: loading DXE core\n"));
   Status = LoadDxeCoreFromFv (NULL, 0);
+  DEBUG((DEBUG_ERROR, "PrePi: LoadDxeCoreFromFv returned %r\n", Status));
   ASSERT_EFI_ERROR (Status);
 }
 

@@ -1,6 +1,7 @@
 #include <PiDxe.h>
 
 #include <Library/LKEnvLib.h>
+#include <Library/DebugLib.h>
 #include <Library/QcomPm8x41Lib.h>
 #include <Library/UefiBootServicesTableLib.h>
 
@@ -13,6 +14,8 @@ Pm8x41DxeInitialize (
 {
   EFI_HANDLE Handle = NULL;
   EFI_STATUS Status;
+
+  DEBUG((DEBUG_ERROR, "Pm8x41DxeInitialize: entering\n"));
 
   Pm8x41ImplLibInitialize();
 

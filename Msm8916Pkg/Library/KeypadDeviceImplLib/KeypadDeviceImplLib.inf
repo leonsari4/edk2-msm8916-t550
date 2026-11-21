@@ -16,6 +16,7 @@
   Msm8916Pkg/Msm8916Pkg.dec
 
 [LibraryClasses]
+  DebugLib
   KeypadDeviceHelperLib
   Pm8x41Lib
   TimerLib

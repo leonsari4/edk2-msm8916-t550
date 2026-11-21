@@ -1,5 +1,6 @@
 #include <PiDxe.h>
 
+#include <Library/DebugLib.h>
 #include <Library/LKEnvLib.h>
 #include <Library/QcomPm8x41Lib.h>
 #include <Library/QcomGpioTlmmLib.h>
@@ -168,6 +169,10 @@ EFI_STATUS KeypadDeviceImplGetKeys (KEYPAD_DEVICE_PROTOCOL *This, KEYPAD_RETURN_
   INTN     RC;
   UINTN    Index;
 
+  if (gPm8x41 == NULL) {
+    gBS->LocateProtocol (&gQcomPm8x41ProtocolGuid, NULL, (VOID **)&gPm8x41);
+  }
+
   for (Index=0; Index<ARRAY_SIZE(KeyList); Index++) {
     KEY_CONTEXT_PRIVATE *Context = KeyList[Index];
 
@@ -200,6 +205,9 @@ EFI_STATUS KeypadDeviceImplGetKeys (KEYPAD_DEVICE_PROTOCOL *This, KEYPAD_RETURN_
       continue;
     // update key status
     IsPressed = (GpioStatus ? 1 : 0) ^ Context->ActiveLow;
+    if (IsPressed) {
+      DEBUG((DEBUG_ERROR, "KeypadImpl: key pressed (gpio=%u status=%u)\n", Context->Gpio, GpioStatus));
+    }
     LibKeyUpdateKeyStatus(&Context->EfiKeyContext, KeypadReturnApi, IsPressed, Delta);
   }
 

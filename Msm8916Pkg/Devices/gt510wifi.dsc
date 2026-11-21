@@ -27,6 +27,29 @@
   gQcomTokenSpaceGuid.PcdSdCardDetectGpio|38
   gQcomTokenSpaceGuid.PcdSdCardDetectActiveLow|TRUE
 
+  # Touch (Atmel maXTouch)
+  gQcomTokenSpaceGuid.PcdTouchI2cSdaGpio|18
+  gQcomTokenSpaceGuid.PcdTouchI2cSclGpio|19
+  gQcomTokenSpaceGuid.PcdTouchI2cAddress|0x4A
+  gQcomTokenSpaceGuid.PcdTouchIntGpio|13
+  gQcomTokenSpaceGuid.PcdTouchPowerEnableGpio|73
+  gQcomTokenSpaceGuid.PcdTouchResetGpio|114
+  gQcomTokenSpaceGuid.PcdTouchMaxX|1024
+  gQcomTokenSpaceGuid.PcdTouchMaxY|768
+  gQcomTokenSpaceGuid.PcdTouchInvertX|FALSE
+  gQcomTokenSpaceGuid.PcdTouchInvertY|FALSE
+  gQcomTokenSpaceGuid.PcdTouchSwapXY|FALSE
+
+  # MAX77849 charger (OTG 5V boost) on bit-banged I2C: SDA GPIO 2, SCL GPIO 3
+  gQcomTokenSpaceGuid.PcdOtgBoostI2cSdaGpio|2
+  gQcomTokenSpaceGuid.PcdOtgBoostI2cSclGpio|3
+  gQcomTokenSpaceGuid.PcdOtgBoostI2cAddress|0x66
+
+  # MAX77849 MUIC on the same bus, address 0x25
+  gQcomTokenSpaceGuid.PcdMuicI2cSdaGpio|2
+  gQcomTokenSpaceGuid.PcdMuicI2cSclGpio|3
+  gQcomTokenSpaceGuid.PcdMuicI2cAddress|0x25
+
   # SmBios Information
   gMsm8916PkgTokenSpaceGuid.PcdDeviceVendor|"Samsung"
   gMsm8916PkgTokenSpaceGuid.PcdDeviceProduct|"Galaxy Tab A 9.7 2015"

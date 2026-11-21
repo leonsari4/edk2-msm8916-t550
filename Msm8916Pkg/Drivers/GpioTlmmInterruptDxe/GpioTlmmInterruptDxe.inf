@@ -17,6 +17,7 @@
   Msm8916Pkg/Msm8916Pkg.dec
 
 [LibraryClasses]
+  DebugLib
   UefiDriverEntryPoint
   InterruptsLib
   UefiLib

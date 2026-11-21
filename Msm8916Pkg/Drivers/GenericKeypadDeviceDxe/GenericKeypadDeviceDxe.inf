@@ -19,11 +19,13 @@
 [LibraryClasses]
   UefiDriverEntryPoint
   MemoryAllocationLib
+  DebugLib
   KeypadDeviceImplLib
 
 [Protocols]
   gEFIDroidKeypadDeviceProtocolGuid
   gEfiDevicePathProtocolGuid
+  gQcomPm8x41ProtocolGuid
 
 [Depex]
-  TRUE
+  gQcomPm8x41ProtocolGuid

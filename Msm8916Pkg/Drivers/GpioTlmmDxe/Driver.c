@@ -2,6 +2,7 @@
 
 #include <Library/LKEnvLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+#include <Library/DebugLib.h>
 #include <Library/QcomGpioTlmmLib.h>
 
 EFI_STATUS
@@ -14,6 +15,7 @@ GpioTlmmDxeInitialize (
   EFI_HANDLE Handle = NULL;
   EFI_STATUS Status;
 
+  DEBUG((DEBUG_ERROR, "GpioTlmmDxeInitialize: entering\n"));
   GpioTlmmImplLibInitialize();
 
   Status = gBS->InstallMultipleProtocolInterfaces(

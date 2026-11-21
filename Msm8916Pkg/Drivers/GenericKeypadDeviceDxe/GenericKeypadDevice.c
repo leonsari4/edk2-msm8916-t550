@@ -42,6 +42,7 @@ KeypadDeviceDxeInitialize (
 {
   EFI_STATUS Status;
 
+  DEBUG((DEBUG_ERROR, "GenericKeypadDeviceDxe: entering\n"));
   Status = gBS->InstallMultipleProtocolInterfaces(
                   &ImageHandle,
                   &gEFIDroidKeypadDeviceProtocolGuid,      
@@ -51,6 +52,8 @@ KeypadDeviceDxeInitialize (
                   NULL
                   );
   ASSERT_EFI_ERROR(Status);
+
+  DEBUG((DEBUG_ERROR, "GenericKeypadDeviceDxe: protocol installed on handle %p\n", ImageHandle));
 
   return Status;
 }

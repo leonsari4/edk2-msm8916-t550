@@ -519,6 +519,7 @@ VOID EFIAPI PlatformBootManagerBeforeConsole(VOID)
     Status = gBS->LocateHandleBuffer(
         ByProtocol, &gEFIDroidKeypadDeviceProtocolGuid, NULL, &NoHandles,
         &Handles);
+    DEBUG((DEBUG_ERROR, "PlatformBm: keypad handles=%u status=%r\n", NoHandles, Status));
     if (!EFI_ERROR(Status) && NoHandles > 0 && Handles != NULL) {
       for (Idx = 0; Idx < NoHandles; Idx++) {
         EFI_DEVICE_PATH_PROTOCOL *DevicePath = DevicePathFromHandle(Handles[Idx]);
@@ -628,7 +629,6 @@ VOID HandleCapsules(VOID)
 VOID EFIAPI PlatformBootManagerAfterConsole(VOID)
 {
   EFI_STATUS                    Status;
-  EFI_GRAPHICS_OUTPUT_PROTOCOL *GraphicsOutput;
   UINTN                         FirmwareVerLength;
   UINTN                         PosX;
   UINTN                         PosY;
@@ -638,29 +638,14 @@ VOID EFIAPI PlatformBootManagerAfterConsole(VOID)
   //
   // Show the splash screen.
   //
-  Status = BootLogoEnableLogo();
-  if (EFI_ERROR(Status)) {
-    if (FirmwareVerLength > 0) {
-      Print(VERSION_STRING_PREFIX L"%s\n", PcdGetPtr(PcdFirmwareVersionString));
-    }
-    Print(L"Press any side button for Boot Options");
+  //
+  // Keep the text console (do not switch to the possibly-black boot logo) so the
+  // boot menu stays readable on this device.
+  //
+  if (FirmwareVerLength > 0) {
+    Print(VERSION_STRING_PREFIX L"%s\n", PcdGetPtr(PcdFirmwareVersionString));
   }
-  else if (FirmwareVerLength > 0) {
-    Status = gBS->HandleProtocol(
-        gST->ConsoleOutHandle, &gEfiGraphicsOutputProtocolGuid,
-        (VOID **)&GraphicsOutput);
-    if (!EFI_ERROR(Status)) {
-      PosX = (GraphicsOutput->Mode->Info->HorizontalResolution -
-              (StrLen(VERSION_STRING_PREFIX) + FirmwareVerLength) *
-                  EFI_GLYPH_WIDTH) /
-             2;
-      PosY = 0;
-
-      PrintXY(
-          PosX, PosY, NULL, NULL, VERSION_STRING_PREFIX L"%s",
-          PcdGetPtr(PcdFirmwareVersionString));
-    }
-  }
+  Print(L"Press any side button for Boot Options\n");
 
   //
   // Connect the rest of the devices.
@@ -704,8 +689,9 @@ VOID EFIAPI PlatformBootManagerWaitCallback(UINT16 TimeoutRemain)
   Timeout = PcdGet16(PcdPlatformBootTimeOut);
 
   if (Timeout != 0 && TimeoutRemain <= 0) {
-    gST->ConOut->ClearScreen(gST->ConOut);
-    BootLogoEnableLogo ();
+    // Do not clear the screen / re-enable the (possibly black) logo; keep the
+    // boot menu text visible.
+    Print(L"\n");
     return;
   }
 
