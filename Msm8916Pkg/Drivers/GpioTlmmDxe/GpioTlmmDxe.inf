@@ -14,15 +14,26 @@
 
 [Packages]
   MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
   ArmPkg/ArmPkg.dec
   Msm8916Pkg/Msm8916Pkg.dec
 
 [LibraryClasses]
+  DebugLib
   UefiDriverEntryPoint
+  UefiBootServicesTableLib
   IoLib
+  PlatformKeypadLib
 
 [Protocols]
   gQcomGpioTlmmProtocolGuid
+  gEfiDevicePathProtocolGuid
+  gEfiSimpleTextInProtocolGuid
+  gEfiSimpleTextInputExProtocolGuid
+  gPlatformKeypadPollProtocolGuid
+
+[Guids]
+  gEfiConsoleInDeviceGuid
 
 [Pcd.common]
   gQcomTokenSpaceGuid.PcdGpioTlmmBaseAddress

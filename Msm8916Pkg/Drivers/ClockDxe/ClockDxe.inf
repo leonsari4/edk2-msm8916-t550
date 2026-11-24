@@ -21,6 +21,7 @@
   Msm8916Pkg/Msm8916Pkg.dec
 
 [LibraryClasses]
+  DebugLib
   UefiDriverEntryPoint
   QcomPlatformClockInitLib
   TimerLib

@@ -75,16 +75,21 @@
   gEfiFileSystemInfoGuid
   gEfiFileSystemVolumeLabelInfoIdGuid
   gEfiEndOfDxeEventGroupGuid
+  gEfiConsoleInDeviceGuid
   gEfiTtyTermGuid
   gUefiShellFileGuid
 
 [Protocols]
   gEdkiiNonDiscoverableDeviceProtocolGuid
+  gEfiBlockIoProtocolGuid
   gEfiDevicePathProtocolGuid
   gEfiGraphicsOutputProtocolGuid
   gEfiLoadedImageProtocolGuid
   gEfiPciRootBridgeIoProtocolGuid
   gEfiSimpleFileSystemProtocolGuid
+  gEfiSimpleTextInProtocolGuid
+  gEfiSimpleTextInputExProtocolGuid
   gEsrtManagementProtocolGuid
   gPlatformBootManagerProtocolGuid
   gEFIDroidKeypadDeviceProtocolGuid
+  gPlatformKeypadPollProtocolGuid

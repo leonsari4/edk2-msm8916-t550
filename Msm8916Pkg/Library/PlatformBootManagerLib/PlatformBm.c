@@ -10,6 +10,7 @@
 
 **/
 
+#include <Guid/ConsoleInDevice.h>
 #include <Guid/EventGroup.h>
 #include <Guid/SerialPortLibVendor.h>
 #include <Guid/TtyTerm.h>
@@ -19,9 +20,11 @@
 #include <Library/DevicePathLib.h>
 #include <Library/HobLib.h>
 #include <Library/PcdLib.h>
+#include <Library/PlatformKeypadLib.h>
 #include <Library/UefiBootManagerLib.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiRuntimeServicesTableLib.h>
+#include <Protocol/BlockIo.h>
 #include <Protocol/DevicePath.h>
 #include <Protocol/EsrtManagement.h>
 #include <Protocol/GraphicsOutput.h>
@@ -332,6 +335,235 @@ PlatformRegisterFvBootOption(
   return OptionNumber;
 }
 
+//
+// GUID used by UefiBootManagerLib to mark boot options it created itself
+// (BmBoot.c: mBmAutoCreateBootOptionGuid).
+//
+STATIC CONST EFI_GUID mBmAutoCreateBootOptionGuid = {
+  0x8108ac4e,
+  0x9f11,
+  0x4d59,
+  { 0x85, 0x0e, 0xe2, 0x1a, 0x52, 0x2c, 0x59, 0xb2 }
+};
+
+//
+// Vendor device path GUID published by SdhciMMCHSDxe. The slot number is
+// stored in Guid.Data4[7] (1 = eMMC, 2 = SD card).
+//
+STATIC CONST EFI_GUID mMmchsDevicePathGuid = {
+  0x891f2b63,
+  0x4ed3,
+  0x4305,
+  { 0xa6, 0x60, 0x01, 0x6d, 0x02, 0x81, 0x05, 0x41 }
+};
+
+STATIC
+VOID
+PlatformLogBootOptions (
+  IN CONST CHAR8 *Where
+  )
+{
+  EFI_BOOT_MANAGER_LOAD_OPTION *BootOptions;
+  UINTN                         BootOptionCount;
+  UINTN                         Index;
+
+  BootOptions =
+      EfiBootManagerGetLoadOptions(&BootOptionCount, LoadOptionTypeBoot);
+  DEBUG((DEBUG_ERROR, "PlatformBm: boot options (%a): %u\n", Where,
+         (UINTN)BootOptionCount));
+  if (BootOptions == NULL) {
+    return;
+  }
+  for (Index = 0; Index < BootOptionCount; Index++) {
+    CHAR16 *Text =
+        ConvertDevicePathToText(BootOptions[Index].FilePath, FALSE, FALSE);
+    DEBUG((DEBUG_ERROR, "PlatformBm:  %04x '%s' %s\n",
+           (UINTN)BootOptions[Index].OptionNumber,
+           BootOptions[Index].Description,
+           (Text != NULL) ? Text : L"<null>"));
+    if (Text != NULL) {
+      FreePool(Text);
+    }
+  }
+  EfiBootManagerFreeLoadOptions(BootOptions, BootOptionCount);
+}
+
+STATIC
+VOID
+PlatformDeleteBootOptionByDescription (
+  IN CONST CHAR16 *Description
+  )
+{
+  EFI_BOOT_MANAGER_LOAD_OPTION *BootOptions;
+  UINTN                         BootOptionCount;
+  UINTN                         Index;
+
+  BootOptions =
+      EfiBootManagerGetLoadOptions(&BootOptionCount, LoadOptionTypeBoot);
+  if (BootOptions == NULL) {
+    return;
+  }
+  for (Index = 0; Index < BootOptionCount; Index++) {
+    if (StrCmp(BootOptions[Index].Description, Description) == 0) {
+      DEBUG((DEBUG_ERROR, "PlatformBm: delete stale option %04x '%s'\n",
+             (UINTN)BootOptions[Index].OptionNumber,
+             BootOptions[Index].Description));
+      EfiBootManagerDeleteLoadOptionVariable(BootOptions[Index].OptionNumber,
+                                             LoadOptionTypeBoot);
+    }
+  }
+  EfiBootManagerFreeLoadOptions(BootOptions, BootOptionCount);
+}
+
+/**
+  Remove every boot option that BDS auto-enumerated. Those show up in the
+  menu as "UEFI Misc Device" / "UEFI Non-Block Boot Device N" and are not
+  useful on this device.
+**/
+STATIC
+VOID
+PlatformRemoveAutoBootOptions (
+  VOID
+  )
+{
+  EFI_BOOT_MANAGER_LOAD_OPTION *BootOptions;
+  UINTN                         BootOptionCount;
+  UINTN                         Index;
+
+  BootOptions =
+      EfiBootManagerGetLoadOptions(&BootOptionCount, LoadOptionTypeBoot);
+  if (BootOptions == NULL) {
+    return;
+  }
+  for (Index = 0; Index < BootOptionCount; Index++) {
+    if ((BootOptions[Index].OptionalDataSize == sizeof(EFI_GUID)) &&
+        (BootOptions[Index].OptionalData != NULL) &&
+        CompareGuid((EFI_GUID *)BootOptions[Index].OptionalData,
+                    &mBmAutoCreateBootOptionGuid)) {
+      DEBUG((DEBUG_ERROR, "PlatformBm: delete auto option %04x '%s'\n",
+             (UINTN)BootOptions[Index].OptionNumber,
+             BootOptions[Index].Description));
+      EfiBootManagerDeleteLoadOptionVariable(BootOptions[Index].OptionNumber,
+                                             LoadOptionTypeBoot);
+    }
+  }
+  EfiBootManagerFreeLoadOptions(BootOptions, BootOptionCount);
+}
+
+STATIC
+INTN
+PlatformGetMmcSlot (
+  IN EFI_DEVICE_PATH_PROTOCOL *DevicePath
+  )
+{
+  EFI_DEVICE_PATH_PROTOCOL *Node;
+
+  for (Node = DevicePath; (Node != NULL) && !IsDevicePathEnd(Node);
+       Node = NextDevicePathNode(Node)) {
+    if ((DevicePathType(Node) == HARDWARE_DEVICE_PATH) &&
+        (DevicePathSubType(Node) == HW_VENDOR_DP) &&
+        CompareGuid(&((VENDOR_DEVICE_PATH *)Node)->Guid,
+                    &mMmchsDevicePathGuid)) {
+      return (INTN)((VENDOR_DEVICE_PATH *)Node)->Guid.Data4[7];
+    }
+  }
+  return -1;
+}
+
+/**
+  Register exactly one "eMMC" and one "SD Card" boot option, pointing at the
+  whole MMC device. BDS then performs removable-media boot (appending
+  \EFI\BOOT\BOOTAA64.EFI) for every FAT partition on the device.
+**/
+STATIC
+VOID
+PlatformRegisterMmcBootOptions (
+  VOID
+  )
+{
+  EFI_STATUS  Status;
+  EFI_HANDLE  *Handles;
+  UINTN       HandleCount;
+  UINTN       Index;
+  EFI_HANDLE  SlotHandle[3];
+  CHAR16      *SlotName[3];
+  UINTN       Slot;
+
+  SlotHandle[0] = NULL;
+  SlotHandle[1] = NULL;
+  SlotHandle[2] = NULL;
+  SlotName[0] = NULL;
+  SlotName[1] = L"eMMC";
+  SlotName[2] = L"SD Card";
+
+  Handles = NULL;
+  HandleCount = 0;
+  Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiBlockIoProtocolGuid, NULL,
+                                   &HandleCount, &Handles);
+  if (EFI_ERROR(Status) || (Handles == NULL)) {
+    DEBUG((DEBUG_ERROR, "PlatformBm: locate BlockIo failed: %r\n", Status));
+    return;
+  }
+
+  for (Index = 0; Index < HandleCount; Index++) {
+    EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
+    EFI_BLOCK_IO_PROTOCOL     *BlockIo;
+    INTN                      MmcSlot;
+
+    DevicePath = DevicePathFromHandle(Handles[Index]);
+    if (DevicePath == NULL) {
+      continue;
+    }
+    MmcSlot = PlatformGetMmcSlot(DevicePath);
+    if ((MmcSlot != 1) && (MmcSlot != 2)) {
+      continue;
+    }
+    Status = gBS->HandleProtocol(Handles[Index], &gEfiBlockIoProtocolGuid,
+                                 (VOID **)&BlockIo);
+    if (EFI_ERROR(Status) || (BlockIo == NULL) || (BlockIo->Media == NULL)) {
+      continue;
+    }
+    DEBUG((DEBUG_ERROR,
+           "PlatformBm: mmc handle %p slot %u logical %u present %u last %lu\n",
+           Handles[Index], (UINTN)MmcSlot,
+           (UINTN)BlockIo->Media->LogicalPartition,
+           (UINTN)BlockIo->Media->MediaPresent,
+           (UINT64)BlockIo->Media->LastBlock));
+    if (BlockIo->Media->LogicalPartition) {
+      continue;
+    }
+    if (SlotHandle[MmcSlot] == NULL) {
+      SlotHandle[MmcSlot] = Handles[Index];
+    }
+  }
+  FreePool(Handles);
+
+  for (Slot = 1; Slot <= 2; Slot++) {
+    EFI_DEVICE_PATH_PROTOCOL *   DevicePath;
+    EFI_BOOT_MANAGER_LOAD_OPTION NewOption;
+
+    if (SlotHandle[Slot] == NULL) {
+      DEBUG((DEBUG_ERROR, "PlatformBm: MMC slot %u not present\n",
+             (UINTN)Slot));
+      continue;
+    }
+    DevicePath = DevicePathFromHandle(SlotHandle[Slot]);
+    PlatformDeleteBootOptionByDescription(SlotName[Slot]);
+    Status = EfiBootManagerInitializeLoadOption(
+        &NewOption, LoadOptionNumberUnassigned, LoadOptionTypeBoot,
+        LOAD_OPTION_ACTIVE, SlotName[Slot], DevicePath, NULL, 0);
+    if (EFI_ERROR(Status)) {
+      DEBUG((DEBUG_ERROR, "PlatformBm: init '%s' option failed: %r\n",
+             SlotName[Slot], Status));
+      continue;
+    }
+    Status = EfiBootManagerAddLoadOptionVariable(&NewOption, MAX_UINTN);
+    DEBUG((DEBUG_ERROR, "PlatformBm: add '%s' option %04x: %r\n",
+           SlotName[Slot], (UINTN)NewOption.OptionNumber, Status));
+    EfiBootManagerFreeLoadOption(&NewOption);
+  }
+}
+
 STATIC
 VOID GetPlatformOptions(VOID)
 {
@@ -437,20 +669,33 @@ VOID PlatformRegisterOptionsAndKeys(VOID)
   ASSERT_EFI_ERROR(Status);
 
   //
-  // Map UP and ESC to Boot Manager Menu
+  // Map UP, DOWN, ESC and ENTER to Boot Manager Menu
   //
   UP.ScanCode     = SCAN_UP;
   UP.UnicodeChar  = CHAR_NULL;
   Esc.ScanCode    = SCAN_ESC;
   Esc.UnicodeChar = CHAR_NULL;
-  Status          = EfiBootManagerGetBootManagerMenu(&BootOption);
-  ASSERT_EFI_ERROR(Status);
-  Status = EfiBootManagerAddKeyOptionVariable(
-      NULL, (UINT16)BootOption.OptionNumber, 0, &UP, NULL);
-  ASSERT(Status == EFI_SUCCESS || Status == EFI_ALREADY_STARTED);
-  Status = EfiBootManagerAddKeyOptionVariable(
-      NULL, (UINT16)BootOption.OptionNumber, 0, &Esc, NULL);
-  ASSERT(Status == EFI_SUCCESS || Status == EFI_ALREADY_STARTED);
+  {
+    EFI_INPUT_KEY Down;
+    Down.ScanCode    = SCAN_DOWN;
+    Down.UnicodeChar = CHAR_NULL;
+
+    Status = EfiBootManagerGetBootManagerMenu(&BootOption);
+    ASSERT_EFI_ERROR(Status);
+
+    Status = EfiBootManagerAddKeyOptionVariable(
+        NULL, (UINT16)BootOption.OptionNumber, 0, &UP, NULL);
+    ASSERT(Status == EFI_SUCCESS || Status == EFI_ALREADY_STARTED);
+    Status = EfiBootManagerAddKeyOptionVariable(
+        NULL, (UINT16)BootOption.OptionNumber, 0, &Down, NULL);
+    ASSERT(Status == EFI_SUCCESS || Status == EFI_ALREADY_STARTED);
+    Status = EfiBootManagerAddKeyOptionVariable(
+        NULL, (UINT16)BootOption.OptionNumber, 0, &Esc, NULL);
+    ASSERT(Status == EFI_SUCCESS || Status == EFI_ALREADY_STARTED);
+    Status = EfiBootManagerAddKeyOptionVariable(
+        NULL, (UINT16)BootOption.OptionNumber, 0, &Enter, NULL);
+    ASSERT(Status == EFI_SUCCESS || Status == EFI_ALREADY_STARTED);
+  }
 }
 
 //
@@ -469,6 +714,8 @@ VOID PlatformRegisterOptionsAndKeys(VOID)
 **/
 VOID EFIAPI PlatformBootManagerBeforeConsole(VOID)
 {
+  DEBUG((DEBUG_ERROR, "PlatformBm: BeforeConsole enter\n"));
+
   //
   // Signal EndOfDxe PI Event
   //
@@ -519,6 +766,7 @@ VOID EFIAPI PlatformBootManagerBeforeConsole(VOID)
     Status = gBS->LocateHandleBuffer(
         ByProtocol, &gEFIDroidKeypadDeviceProtocolGuid, NULL, &NoHandles,
         &Handles);
+    DEBUG((DEBUG_ERROR, "PlatformBm: keypad handles=%u status=%r\n", NoHandles, Status));
     if (!EFI_ERROR(Status) && NoHandles > 0 && Handles != NULL) {
       for (Idx = 0; Idx < NoHandles; Idx++) {
         EFI_DEVICE_PATH_PROTOCOL *DevicePath = DevicePathFromHandle(Handles[Idx]);
@@ -562,6 +810,7 @@ VOID EFIAPI PlatformBootManagerBeforeConsole(VOID)
   // Register platform-specific boot options and keyboard shortcuts.
   //
   PlatformRegisterOptionsAndKeys();
+  DEBUG((DEBUG_ERROR, "PlatformBm: BeforeConsole done\n"));
 }
 
 STATIC
@@ -628,7 +877,8 @@ VOID HandleCapsules(VOID)
 VOID EFIAPI PlatformBootManagerAfterConsole(VOID)
 {
   EFI_STATUS                    Status;
-  EFI_GRAPHICS_OUTPUT_PROTOCOL *GraphicsOutput;
+
+  DEBUG((DEBUG_ERROR, "PlatformBm: AfterConsole enter\n"));
   UINTN                         FirmwareVerLength;
   UINTN                         PosX;
   UINTN                         PosY;
@@ -638,34 +888,20 @@ VOID EFIAPI PlatformBootManagerAfterConsole(VOID)
   //
   // Show the splash screen.
   //
-  Status = BootLogoEnableLogo();
-  if (EFI_ERROR(Status)) {
-    if (FirmwareVerLength > 0) {
-      Print(VERSION_STRING_PREFIX L"%s\n", PcdGetPtr(PcdFirmwareVersionString));
-    }
-    Print(L"Press any side button for Boot Options");
+  //
+  // Keep the text console (do not switch to the possibly-black boot logo) so the
+  // boot menu stays readable on this device.
+  //
+  if (FirmwareVerLength > 0) {
+    Print(VERSION_STRING_PREFIX L"%s\n", PcdGetPtr(PcdFirmwareVersionString));
   }
-  else if (FirmwareVerLength > 0) {
-    Status = gBS->HandleProtocol(
-        gST->ConsoleOutHandle, &gEfiGraphicsOutputProtocolGuid,
-        (VOID **)&GraphicsOutput);
-    if (!EFI_ERROR(Status)) {
-      PosX = (GraphicsOutput->Mode->Info->HorizontalResolution -
-              (StrLen(VERSION_STRING_PREFIX) + FirmwareVerLength) *
-                  EFI_GLYPH_WIDTH) /
-             2;
-      PosY = 0;
-
-      PrintXY(
-          PosX, PosY, NULL, NULL, VERSION_STRING_PREFIX L"%s",
-          PcdGetPtr(PcdFirmwareVersionString));
-    }
-  }
+  Print(L"Home/Power=Enter (hold=Esc), Vol+=Down (hold=Up), Vol-=Down\n");
 
   //
   // Connect the rest of the devices.
   //
   EfiBootManagerConnectAll();
+  DEBUG((DEBUG_ERROR, "PlatformBm: ConnectAll done\n"));
 
   //
   // On ARM, there is currently no reason to use the phased capsule
@@ -677,15 +913,122 @@ VOID EFIAPI PlatformBootManagerAfterConsole(VOID)
   HandleCapsules();
 
   //
-  // Enumerate all possible boot options.
+  // Enumerate all possible boot options, then replace the auto-generated
+  // ones with the two entries this device should offer.
   //
   EfiBootManagerRefreshAllBootOption();
+  PlatformLogBootOptions("after refresh");
+  PlatformRemoveAutoBootOptions();
+  PlatformRegisterMmcBootOptions();
 
   //
-  // Register UEFI Shell
+  // Register UEFI Shell last so the menu order is eMMC, SD Card, Shell.
   //
+  PlatformDeleteBootOptionByDescription(L"UEFI Shell");
   PlatformRegisterFvBootOption(
       &gUefiShellFileGuid, L"UEFI Shell", LOAD_OPTION_ACTIVE);
+  PlatformLogBootOptions("final");
+
+  //
+  // Only now start polling the side buttons. Doing this during DXE or
+  // EfiBootManagerConnectAll() hangs MMCHS/console initialization.
+  //
+  {
+    PLATFORM_KEYPAD_POLL_PROTOCOL *KeypadPoll = NULL;
+    DEBUG((DEBUG_ERROR, "PlatformBm: AfterConsole done, starting keypad poll\n"));
+    if (!EFI_ERROR(gBS->LocateProtocol(&gPlatformKeypadPollProtocolGuid, NULL,
+                                       (VOID **)&KeypadPoll)) &&
+        KeypadPoll != NULL && KeypadPoll->StartPoll != NULL) {
+      KeypadPoll->StartPoll();
+    }
+
+    // The keypad is the only real keyboard, and the HII front page reads
+    // gST->ConIn directly. Point the system console input at it explicitly
+    // instead of depending on ConSplitter and ConPlatform variable plumbing.
+    {
+      STATIC CONST EFI_GUID KeypadDpGuid = {
+        0x5d1c2c7c, 0x8e64, 0x4c1b,
+        { 0x9a, 0x8f, 0x2c, 0x5a, 0x1b, 0x3f, 0x6d, 0x40 }
+      };
+      EFI_HANDLE                      *Handles = NULL;
+      UINTN                            NoHandles = 0;
+      UINTN                            Idx;
+      EFI_HANDLE                       KeypadHandle = NULL;
+      EFI_DEVICE_PATH_PROTOCOL        *KeypadDp = NULL;
+      EFI_SIMPLE_TEXT_INPUT_PROTOCOL  *KeypadTextIn = NULL;
+
+      if (!EFI_ERROR(gBS->LocateHandleBuffer(
+              ByProtocol, &gEfiSimpleTextInputExProtocolGuid, NULL,
+              &NoHandles, &Handles)) &&
+          Handles != NULL) {
+        for (Idx = 0; Idx < NoHandles; Idx++) {
+          EFI_DEVICE_PATH_PROTOCOL *DevicePath = DevicePathFromHandle(Handles[Idx]);
+
+          if ((DevicePath != NULL) &&
+              (DevicePathType(DevicePath) == HARDWARE_DEVICE_PATH) &&
+              (DevicePathSubType(DevicePath) == HW_VENDOR_DP) &&
+              CompareGuid(&((VENDOR_DEVICE_PATH *)DevicePath)->Guid,
+                          &KeypadDpGuid)) {
+            KeypadHandle = Handles[Idx];
+            KeypadDp     = DevicePath;
+            break;
+          }
+        }
+        gBS->FreePool(Handles);
+      }
+
+      DEBUG((DEBUG_ERROR, "PlatformBm: keypad handle=%p dp=%p\n",
+             KeypadHandle, KeypadDp));
+
+      if ((KeypadHandle != NULL) && (KeypadDp != NULL) &&
+          !EFI_ERROR(gBS->HandleProtocol(
+                         KeypadHandle, &gEfiSimpleTextInProtocolGuid,
+                         (VOID **)&KeypadTextIn))) {
+        EFI_STATUS Status;
+
+        Status = EfiBootManagerUpdateConsoleVariable(ConIn, KeypadDp, NULL);
+        DEBUG((DEBUG_ERROR, "PlatformBm: add keypad to ConIn variable: %r\n",
+               Status));
+
+        Status = gBS->ConnectController(KeypadHandle, NULL, NULL, TRUE);
+        DEBUG((DEBUG_ERROR, "PlatformBm: keypad ConnectController: %r\n",
+               Status));
+
+        {
+          EFI_OPEN_PROTOCOL_INFORMATION_ENTRY *Info = NULL;
+          UINTN                                Count = 0;
+          UINTN                                InfoIdx;
+
+          Status = gBS->OpenProtocolInformation(
+                           KeypadHandle, &gEfiConsoleInDeviceGuid,
+                           &Info, &Count);
+          DEBUG((DEBUG_ERROR,
+                 "PlatformBm: keypad ConsoleIn opens status=%r count=%u\n",
+                 Status, Count));
+          if (!EFI_ERROR(Status) && (Info != NULL)) {
+            for (InfoIdx = 0; InfoIdx < Count; InfoIdx++) {
+              DEBUG((DEBUG_ERROR,
+                     "PlatformBm:  open agent=%p controller=%p attrs=0x%x\n",
+                     Info[InfoIdx].AgentHandle,
+                     Info[InfoIdx].ControllerHandle,
+                     Info[InfoIdx].Attributes));
+            }
+            FreePool(Info);
+          }
+        }
+
+        // Clear anything queued while booting, then make the keypad the
+        // system console input. This bypasses ConSplitter entirely.
+        KeypadTextIn->Reset(KeypadTextIn, FALSE);
+        DEBUG((DEBUG_ERROR,
+               "PlatformBm: ConIn old handle=%p protocol=%p -> keypad handle=%p protocol=%p\n",
+               gST->ConsoleInHandle, gST->ConIn, KeypadHandle, KeypadTextIn));
+        gST->ConsoleInHandle = KeypadHandle;
+        gST->ConIn           = KeypadTextIn;
+      }
+    }
+    (void)KeypadPoll;
+  }
 }
 
 /**
@@ -702,10 +1045,23 @@ VOID EFIAPI PlatformBootManagerWaitCallback(UINT16 TimeoutRemain)
   EFI_STATUS                          Status;
 
   Timeout = PcdGet16(PcdPlatformBootTimeOut);
+  DEBUG((DEBUG_ERROR, "PlatformBm: wait callback remain=%u timeout=%u\n",
+         TimeoutRemain, Timeout));
+
+  {
+    PLATFORM_KEYPAD_POLL_PROTOCOL *KeypadPoll = NULL;
+
+    if (!EFI_ERROR(gBS->LocateProtocol(&gPlatformKeypadPollProtocolGuid, NULL,
+                                       (VOID **)&KeypadPoll)) &&
+        (KeypadPoll != NULL) && (KeypadPoll->PollPmicKeys != NULL)) {
+      KeypadPoll->PollPmicKeys();
+    }
+  }
 
   if (Timeout != 0 && TimeoutRemain <= 0) {
-    gST->ConOut->ClearScreen(gST->ConOut);
-    BootLogoEnableLogo ();
+    // Do not clear the screen / re-enable the (possibly black) logo; keep the
+    // boot menu text visible.
+    Print(L"\n");
     return;
   }
 

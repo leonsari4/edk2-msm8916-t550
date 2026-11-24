@@ -56,3 +56,6 @@
   gEfiSimpleTextInputExProtocolGuid             ## BY_START
   gEFIDroidKeypadDeviceProtocolGuid
   gEfiDevicePathProtocolGuid
+
+[Depex]
+  gEFIDroidKeypadDeviceProtocolGuid

@@ -15,7 +15,9 @@ Pm8x41LibConstructor (
   EFI_STATUS Status;
 
   Status = gBS->LocateProtocol (&gQcomPm8x41ProtocolGuid, NULL, (VOID **)&gPm8x41);
-  ASSERT_EFI_ERROR (Status);
+  if (EFI_ERROR (Status)) {
+    gPm8x41 = NULL;
+  }
 
-  return Status;
+  return EFI_SUCCESS;
 }

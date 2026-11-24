@@ -2,7 +2,9 @@
 
 #include <Library/LKEnvLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+#include <Library/DebugLib.h>
 #include <Library/QcomGpioTlmmLib.h>
+#include <Library/PlatformKeypadLib.h>
 
 EFI_STATUS
 EFIAPI
@@ -14,6 +16,7 @@ GpioTlmmDxeInitialize (
   EFI_HANDLE Handle = NULL;
   EFI_STATUS Status;
 
+  DEBUG((DEBUG_ERROR, "GpioTlmmDxeInitialize: entering\n"));
   GpioTlmmImplLibInitialize();
 
   Status = gBS->InstallMultipleProtocolInterfaces(
@@ -22,6 +25,10 @@ GpioTlmmDxeInitialize (
                   NULL
                   );
   ASSERT_EFI_ERROR(Status);
+
+  if (!EFI_ERROR(Status)) {
+    PlatformKeypadInstall();
+  }
 
   return Status;
 }

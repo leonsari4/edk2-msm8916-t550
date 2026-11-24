@@ -41,6 +41,7 @@
   MallocLib|Msm8916Pkg/Library/MallocLib/MallocLib.inf
   KeypadDeviceHelperLib|Msm8916Pkg/Library/KeypadDeviceHelperLib/KeypadDeviceHelperLib.inf
   KeypadDeviceImplLib|Msm8916Pkg/Library/KeypadDeviceImplLib/KeypadDeviceImplLib.inf
+  PlatformKeypadLib|Msm8916Pkg/Library/PlatformKeypadLib/PlatformKeypadLib.inf
   QcomPlatformClockInitLib|Msm8916Pkg/Library/QcomPlatformClockInitLib/QcomPlatformClockInitLib.inf
   QcomPlatformMmcLib|Msm8916Pkg/Library/PlatformMmcLib/QcomPlatformMmcLib.inf
   QcomPlatformMmcClockOverrideLib|Msm8916Pkg/Library/QcomPlatformMmcClockOverrideLib/QcomPlatformMmcClockOverrideLib.inf
@@ -122,6 +123,8 @@
   SpmiLib|Msm8916Pkg/Drivers/SpmiDxe/SpmiImplLib.inf
   Pm8x41Lib|Msm8916Pkg/Drivers/Pm8x41Dxe/Pm8x41Lib.inf
   ClockLib|Msm8916Pkg/Drivers/ClockDxe/ClockImplLib.inf
+  GpioI2cLib|Msm8916Pkg/Library/GpioI2cLib/GpioI2cLib.inf
+  NonDiscoverableDeviceRegistrationLib|MdeModulePkg/Library/NonDiscoverableDeviceRegistrationLib/NonDiscoverableDeviceRegistrationLib.inf
 
 [LibraryClasses.common.UEFI_APPLICATION]
   # SoC Drivers
@@ -175,16 +178,16 @@
   # SoC Drivers GPIO TLMM
   gQcomTokenSpaceGuid.PcdGpioTlmmBaseAddress|0x1000000
   gQcomTokenSpaceGuid.PcdGpioTlmmSummaryIrq|240
-  gQcomTokenSpaceGuid.PcdGpioTlmmIoOffset|0x1004
-  gQcomTokenSpaceGuid.PcdGpioTlmmIoElementSize|0x10
-  gQcomTokenSpaceGuid.PcdGpioTlmmCtlOffset|0x1000
-  gQcomTokenSpaceGuid.PcdGpioTlmmCtlElementSize|0x10
-  gQcomTokenSpaceGuid.PcdGpioTlmmIntrCfgOffset|0x1008
-  gQcomTokenSpaceGuid.PcdGpioTlmmIntrCfgElementSize|0x10
-  gQcomTokenSpaceGuid.PcdGpioTlmmIntrStatusOffset|0x100c
-  gQcomTokenSpaceGuid.PcdGpioTlmmIntrStatusElementSize|0x10
-  gQcomTokenSpaceGuid.PcdGpioTlmmIntrTargetOffset|0x1008
-  gQcomTokenSpaceGuid.PcdGpioTlmmIntrTargetElementSize|0x10
+  gQcomTokenSpaceGuid.PcdGpioTlmmIoOffset|0x4
+  gQcomTokenSpaceGuid.PcdGpioTlmmIoElementSize|0x1000
+  gQcomTokenSpaceGuid.PcdGpioTlmmCtlOffset|0x0
+  gQcomTokenSpaceGuid.PcdGpioTlmmCtlElementSize|0x1000
+  gQcomTokenSpaceGuid.PcdGpioTlmmIntrCfgOffset|0x8
+  gQcomTokenSpaceGuid.PcdGpioTlmmIntrCfgElementSize|0x1000
+  gQcomTokenSpaceGuid.PcdGpioTlmmIntrStatusOffset|0xc
+  gQcomTokenSpaceGuid.PcdGpioTlmmIntrStatusElementSize|0x1000
+  gQcomTokenSpaceGuid.PcdGpioTlmmIntrTargetOffset|0x8
+  gQcomTokenSpaceGuid.PcdGpioTlmmIntrTargetElementSize|0x1000
   gQcomTokenSpaceGuid.PcdGpioTlmmIntrEnableBit|0
   gQcomTokenSpaceGuid.PcdGpioTlmmIntrStatusBit|0
   gQcomTokenSpaceGuid.PcdGpioTlmmIntrAckHigh|FALSE
@@ -204,6 +207,8 @@
 
   # SoC Drivers SPMI
   gQcomTokenSpaceGuid.PcdSpmiBaseAddress|0x02000000
+  gQcomTokenSpaceGuid.PcdSpmiVersion|2
+  gQcomTokenSpaceGuid.PcdPmicArbCoreAddress|0x0200F000
 
   # SoC Drivers MMC
   gQcomTokenSpaceGuid.PcdSdccMciHcMode|0x00000078
@@ -229,7 +234,7 @@
 
   # GUID of the UI app
   gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{ 0x21, 0xaa, 0x2c, 0x46, 0x14, 0x76, 0x03, 0x45, 0x83, 0x6e, 0x8a, 0xb6, 0xf4, 0x66, 0x23, 0x31 }
-  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|5
+  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|10
 
   gEfiMdeModulePkgTokenSpaceGuid.PcdResetOnMemoryTypeInformationChange|FALSE
 
@@ -242,7 +247,7 @@
   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2f
 !if $(TARGET) == DEBUG
   gEfiMdePkgTokenSpaceGuid.PcdDebugClearMemoryValue|0xAF
-  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x800fee0f
+  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x80000000
 !else
   gEfiMdePkgTokenSpaceGuid.PcdDebugClearMemoryValue|0x00
   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x00000000
@@ -343,12 +348,19 @@
   #
   EmbeddedPkg/Drivers/VirtualKeyboardDxe/VirtualKeyboardDxe.inf
 
+  #
+  # Touch (Atmel maXTouch)
+  #
+  Msm8916Pkg/Drivers/AtmelMaXTouchDxe/AtmelMaXTouchDxe.inf
+
   Msm8916Pkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 
   #
   # USB Host Support
   #
+  Msm8916Pkg/Drivers/UsbHostDxe/UsbHostDxe.inf
   MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+  MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
   MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
 
   #

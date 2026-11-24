@@ -211,11 +211,20 @@ long long unsigned int pmic_arb_write_cmd(struct pmic_arb_cmd *cmd,
 	else
 		writel(val, PMICV1_ARB_CHNLn_CMD0(pmic_arb_chnl_num));
 
-	/* Wait till CMD DONE status */
-	if (spmi_version==2)
-		while (!(val = readl(PMICV2_ARB_CHNLn_STATUS(pmic_arb_chnl_num))));
-	else
-		while (!(val = readl(PMICV1_ARB_CHNLn_STATUS(pmic_arb_chnl_num))));
+	/* Wait till CMD DONE status, with a bounded timeout.
+	 * An unbounded loop here hangs the whole boot if a transaction
+	 * never completes (seen when polling PMIC keys from BDS). */
+	{
+		uint32_t Timeout = 1000000;
+		if (spmi_version==2)
+			while (!(val = readl(PMICV2_ARB_CHNLn_STATUS(pmic_arb_chnl_num))) && --Timeout);
+		else
+			while (!(val = readl(PMICV1_ARB_CHNLn_STATUS(pmic_arb_chnl_num))) && --Timeout);
+		if (Timeout == 0) {
+			dprintf(CRITICAL, "SPMI write command timeout\n");
+			return 1;
+		}
+	}
 
 	/* Check for errors */
 	error = val ^ (1 << PMIC_ARB_CMD_DONE);
@@ -312,11 +321,18 @@ long long unsigned int pmic_arb_read_cmd(struct pmic_arb_cmd *cmd,
 	else
 		writel(val, PMICV1_ARB_CHNLn_CMD0(pmic_arb_chnl_num));
 
-	/* Wait till CMD DONE status */
-	if (spmi_version==2)
-		while (!(val = readl(PMICV2_ARB_OBS_CHNLn_STATUS(pmic_arb_chnl_num))));
-	else
-		while (!(val = readl(PMICV1_ARB_CHNLn_STATUS(pmic_arb_chnl_num))));
+	/* Wait till CMD DONE status, with a bounded timeout. */
+	{
+		uint32_t Timeout = 1000000;
+		if (spmi_version==2)
+			while (!(val = readl(PMICV2_ARB_OBS_CHNLn_STATUS(pmic_arb_chnl_num))) && --Timeout);
+		else
+			while (!(val = readl(PMICV1_ARB_CHNLn_STATUS(pmic_arb_chnl_num))) && --Timeout);
+		if (Timeout == 0) {
+			dprintf(CRITICAL, "SPMI read command timeout\n");
+			return 1;
+		}
+	}
 
 	/* Check for errors */
 	error = val ^ (1 << PMIC_ARB_CMD_DONE);

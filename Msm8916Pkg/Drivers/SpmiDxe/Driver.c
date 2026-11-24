@@ -1,6 +1,7 @@
 #include <PiDxe.h>
 
 #include <Library/UefiBootServicesTableLib.h>
+#include <Library/DebugLib.h>
 #include <Library/QcomSpmiLib.h>
 #include <Library/LKEnvLib.h>
 
@@ -13,6 +14,8 @@ SpmiDxeInitialize (
 {
   EFI_HANDLE Handle = NULL;
   EFI_STATUS Status;
+
+  DEBUG((DEBUG_ERROR, "SpmiDxeInitialize: entering\n"));
 
   SpmiImplLibInitialize();
 

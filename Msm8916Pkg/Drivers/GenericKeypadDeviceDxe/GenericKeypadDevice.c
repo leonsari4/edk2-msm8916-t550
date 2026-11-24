@@ -1,7 +1,9 @@
 #include <PiDxe.h>
+#include <Library/LKEnvLib.h>
 #include <Protocol/KeypadDevice.h>
 #include <Library/DebugLib.h>
 #include <Library/KeypadDeviceImplLib.h>
+#include <Library/QcomPm8x41Lib.h>
 #include <Library/UefiBootServicesTableLib.h>
 
 typedef struct {
@@ -42,6 +44,8 @@ KeypadDeviceDxeInitialize (
 {
   EFI_STATUS Status;
 
+  DEBUG((DEBUG_ERROR, "GenericKeypadDeviceDxe: entering\n"));
+  DEBUG((DEBUG_ERROR, "GenericKeypadDeviceDxe: gPm8x41=%p\n", gPm8x41));
   Status = gBS->InstallMultipleProtocolInterfaces(
                   &ImageHandle,
                   &gEFIDroidKeypadDeviceProtocolGuid,      
@@ -51,6 +55,8 @@ KeypadDeviceDxeInitialize (
                   NULL
                   );
   ASSERT_EFI_ERROR(Status);
+
+  DEBUG((DEBUG_ERROR, "GenericKeypadDeviceDxe: protocol installed on handle %p\n", ImageHandle));
 
   return Status;
 }

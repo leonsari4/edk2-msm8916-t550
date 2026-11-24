@@ -25,6 +25,8 @@ GpioTlmmInterruptDxeInitialize (
   EFI_HANDLE Handle = NULL;
   EFI_STATUS Status;
 
+  DEBUG((DEBUG_ERROR, "GpioTlmmInterruptDxeInitialize: entering\n"));
+
   msm_gpio_irq_init();
 
   Status = gBS->InstallMultipleProtocolInterfaces(

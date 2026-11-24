@@ -15,7 +15,9 @@ GpioTlmmLibConstructor (
   EFI_STATUS Status;
 
   Status = gBS->LocateProtocol (&gQcomGpioTlmmProtocolGuid, NULL, (VOID **)&gGpioTlmm);
-  ASSERT_EFI_ERROR (Status);
+  if (EFI_ERROR (Status)) {
+    gGpioTlmm = NULL;
+  }
 
-  return Status;
+  return EFI_SUCCESS;
 }

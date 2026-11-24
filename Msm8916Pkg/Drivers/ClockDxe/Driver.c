@@ -1,5 +1,6 @@
 #include <PiDxe.h>
 
+#include <Library/DebugLib.h>
 #include <Library/LKEnvLib.h>
 
 #include <Library/QcomClockLib.h>
@@ -11,6 +12,8 @@ ClockDxeInitialize(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 {
   EFI_HANDLE Handle = NULL;
   EFI_STATUS Status;
+
+  DEBUG((DEBUG_ERROR, "ClockDxeInitialize: entering\n"));
 
   ClockImplLibInitialize();
 

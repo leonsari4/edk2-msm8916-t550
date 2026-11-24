@@ -1,0 +1,36 @@
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = PlatformKeypadLib
+  FILE_GUID                      = 5D1C2C7C-8E64-4C1B-9A8F-2C5A1B3F6D40
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 1.0
+  LIBRARY_CLASS                  = PlatformKeypadLib
+
+[Sources.common]
+  PlatformKeypadLib.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  ArmPkg/ArmPkg.dec
+  Msm8916Pkg/Msm8916Pkg.dec
+
+[LibraryClasses]
+  BaseLib
+  DebugLib
+  MemoryAllocationLib
+  Pm8x41Lib
+  UefiBootServicesTableLib
+  TimerLib
+
+[Protocols]
+  gQcomGpioTlmmProtocolGuid
+  gQcomPm8x41ProtocolGuid
+  gEfiDevicePathProtocolGuid
+  gEfiSimpleTextInProtocolGuid
+  gEfiSimpleTextInputExProtocolGuid
+  gPlatformKeypadPollProtocolGuid
+
+[Guids]
+  gEfiConsoleInDeviceGuid
+

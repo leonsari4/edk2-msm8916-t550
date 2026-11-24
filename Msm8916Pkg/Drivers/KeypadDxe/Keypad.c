@@ -16,6 +16,7 @@ WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
 
 #include "Keypad.h"
 #include <Configuration/BootDevices.h>
+#include <Library/DebugLib.h>
 
 //
 // Function prototypes
@@ -301,6 +302,8 @@ KeypadControllerDriverStart(
       "en", gKeypadComponentName2.SupportedLanguages,
       &ConsoleIn->ControllerNameTable, L"Keypad Device", FALSE);
 
+  DEBUG((DEBUG_ERROR, "KeypadDxe: installed SimpleTextIn on handle %p\n", Controller));
+
   //
   // Install protocol interfaces for the keypad device.
   //
@@ -469,6 +472,7 @@ InitializeKeypad(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 {
   EFI_STATUS Status;
 
+  DEBUG((DEBUG_ERROR, "KeypadDxe: InitializeKeypad\n"));
   //
   // Install driver model protocol(s).
   //
@@ -477,5 +481,6 @@ InitializeKeypad(IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
       &gKeypadComponentName, &gKeypadComponentName2);
   ASSERT_EFI_ERROR(Status);
 
+  DEBUG((DEBUG_ERROR, "KeypadDxe: driver binding installed\n"));
   return Status;
 }

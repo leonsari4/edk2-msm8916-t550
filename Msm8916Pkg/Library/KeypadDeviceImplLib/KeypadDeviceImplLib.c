@@ -1,5 +1,6 @@
 #include <PiDxe.h>
 
+#include <Library/DebugLib.h>
 #include <Library/LKEnvLib.h>
 #include <Library/QcomPm8x41Lib.h>
 #include <Library/QcomGpioTlmmLib.h>
@@ -78,6 +79,9 @@ KeypadConfigureGpios (
   VOID
   )
 {
+  if (gGpioTlmm == NULL) {
+    gBS->LocateProtocol (&gQcomGpioTlmmProtocolGuid, NULL, (VOID **)&gGpioTlmm);
+  }
   if (GpioConfigured || gGpioTlmm == NULL) {
     return;
   }
@@ -168,6 +172,13 @@ EFI_STATUS KeypadDeviceImplGetKeys (KEYPAD_DEVICE_PROTOCOL *This, KEYPAD_RETURN_
   INTN     RC;
   UINTN    Index;
 
+  if (gPm8x41 == NULL) {
+    gBS->LocateProtocol (&gQcomPm8x41ProtocolGuid, NULL, (VOID **)&gPm8x41);
+  }
+  if (gGpioTlmm == NULL) {
+    gBS->LocateProtocol (&gQcomGpioTlmmProtocolGuid, NULL, (VOID **)&gGpioTlmm);
+  }
+
   for (Index=0; Index<ARRAY_SIZE(KeyList); Index++) {
     KEY_CONTEXT_PRIVATE *Context = KeyList[Index];
 
@@ -177,13 +188,22 @@ EFI_STATUS KeypadDeviceImplGetKeys (KEYPAD_DEVICE_PROTOCOL *This, KEYPAD_RETURN_
 
     // get status
     if (Context->DeviceType == KEY_DEVICE_TYPE_TLMM) {
+      if (gGpioTlmm == NULL) {
+        continue;
+      }
       GpioStatus = gGpioTlmm->Get(Context->Gpio);
       RC = 0;
     }
     else if (Context->DeviceType == KEY_DEVICE_TYPE_PM8X41) {
+      if (gPm8x41 == NULL) {
+        continue;
+      }
       RC = gPm8x41->pm8x41_gpio_get(Context->Gpio, &GpioStatus);
     }
     else if (Context->DeviceType == KEY_DEVICE_TYPE_PM8X41_PON) {
+      if (gPm8x41 == NULL) {
+        continue;
+      }
       if (Context->PonType == 0x1)
         GpioStatus = gPm8x41->pm8x41_resin_status ();
       else if (Context->PonType == 0x0)
@@ -200,6 +220,9 @@ EFI_STATUS KeypadDeviceImplGetKeys (KEYPAD_DEVICE_PROTOCOL *This, KEYPAD_RETURN_
       continue;
     // update key status
     IsPressed = (GpioStatus ? 1 : 0) ^ Context->ActiveLow;
+    if (IsPressed) {
+      DEBUG((DEBUG_ERROR, "KeypadImpl: key pressed (gpio=%u status=%u)\n", Context->Gpio, GpioStatus));
+    }
     LibKeyUpdateKeyStatus(&Context->EfiKeyContext, KeypadReturnApi, IsPressed, Delta);
   }
 

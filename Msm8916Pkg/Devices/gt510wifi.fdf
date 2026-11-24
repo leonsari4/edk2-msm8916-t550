@@ -192,6 +192,8 @@ APRIORI DXE {
   
   INF Msm8916Pkg/Drivers/SimpleFbDxe/SimpleFbDxe.inf
 
+  INF Msm8916Pkg/Drivers/AtmelMaXTouchDxe/AtmelMaXTouchDxe.inf
+
   # Platform Drivers
   INF Msm8916Pkg/Drivers/BamDxe/BamDxe.inf
   INF Msm8916Pkg/Drivers/GpioTlmmDxe/GpioTlmmDxe.inf
@@ -204,7 +206,9 @@ APRIORI DXE {
   #
   # USB Host Support
   #
+  INF Msm8916Pkg/Drivers/UsbHostDxe/UsbHostDxe.inf
   INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+  INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
   INF MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
   INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
 

@@ -33,13 +33,13 @@
 
 #define TYPE1_STRINGS                                   \
   "Samsung\0"                        /* Manufacturer */ \
-  "Galaxy J5 2015\0"                 /* Product Name */ \
+  "Galaxy Tab A 9.7 WiFi (SM-T550)\0"/* Product Name */ \
   "None\0"                           /* Version */      \
   "                    \0"           /* 20 character buffer */
 
 #define TYPE2_STRINGS                                     \
   "Samsung\0"                        /* Manufacturer */   \
-  "Galaxy J5 2015\0"                 /* Product Name */   \
+  "Galaxy Tab A 9.7 WiFi (SM-T550)\0"/* Product Name */   \
   "R0\0"                             /* Version */        \
   "Serial Not Set\0"                 /* Serial */         \
   "Base of Chassis\0"                /* board location */ \
@@ -54,9 +54,9 @@
 #define TYPE4_STRINGS                                               \
   "BGA-1156\0"                       /* socket type */              \
   "ARM LTD\0"                        /* manufactuer */              \
-  "Cortex-A57\0"                     /* processor 1 description */  \
-  "Cortex-A53\0"                     /* processor 2 description */  \
-  "Cortex-A72\0"                     /* processor 2 description */  \
+  "Qualcomm Snapdragon 410\0"         /* processor 1 description */  \
+  "Qualcomm Snapdragon 410\0"         /* processor 2 description */  \
+  "Qualcomm Snapdragon 410\0"         /* processor 2 description */  \
   "0xd03\0"                          /* A53 part number */          \
   "0xd07\0"                          /* A57 part number */          \
   "0xd08\0"                          /* A72 part number */
@@ -360,8 +360,8 @@ STATIC CONST ARM_TYPE4 mArmDefaultType4_a53 = {
     4, //version
     {0,0,0,0,0,1}, //voltage
     0, //external clock
-    650, //max speed
-    650, //current speed
+    1200, //max speed
+    1200, //current speed
     0x41, //status
     ProcessorUpgradeOther,
     SMBIOS_HANDLE_A53_L1I, //l1 cache handle

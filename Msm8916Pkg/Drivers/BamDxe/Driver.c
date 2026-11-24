@@ -1,6 +1,7 @@
 #include <PiDxe.h>
 
 #include <Library/LKEnvLib.h>
+#include <Library/DebugLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Protocol/QcomBam.h>
 
@@ -27,6 +28,8 @@ BamDxeInitialize (
 {
   EFI_HANDLE Handle = NULL;
   EFI_STATUS Status;
+
+  DEBUG((DEBUG_ERROR, "BamDxeInitialize: entering\n"));
 
   Status = gBS->InstallMultipleProtocolInterfaces(
                   &Handle,

@@ -7,11 +7,15 @@
 #include <Chipset/mmc_sdhci.h>
 #include <Platform/iomap.h>
 #include <Platform/irqs.h>
+#include <Device/pm8x41.h>
+#include <Library/QcomPm8x41Lib.h>
 
 #define MMC_SLOT_EMMC 1
 #define MMC_SLOT_SD   2
 
 #define GPIO_NONE 0xFFFFFFFF
+
+#define PM8x41_LDO11 0x14A00
 
 static uint32_t mmc_pwrctl_base[] =
 	{ MSM_SDC1_BASE, MSM_SDC2_BASE };
@@ -90,13 +94,13 @@ STATIC BOOLEAN SdCardPresent(VOID)
   }
 
   gGpioTlmm->SetFunction(Gpio, 0);
-  gGpioTlmm->SetPull(Gpio, GPIO_PULL_NONE);
+  gGpioTlmm->SetPull(Gpio, GPIO_PULL_UP);
   gGpioTlmm->SetDriveStrength(Gpio, 2);
   gGpioTlmm->DirectionInput(Gpio);
   MicroSecondDelay(100);
 
   Level = gGpioTlmm->Get(Gpio);
-  DEBUG((EFI_D_INFO, "SD card detect gpio%u = %u\n", Gpio, Level));
+  DEBUG((EFI_D_ERROR, "SD card detect gpio%u = %u\n", Gpio, Level));
 
   return ActiveLow ? (Level == 0) : (Level != 0);
 }
@@ -105,7 +109,7 @@ STATIC VOID InitEmmc(INIT_SLOT_CB InitSlot)
 {
   struct mmc_config_data config = {0};
 
-  DEBUG((EFI_D_LOAD, "Initializing eMMC (mmc slot %u)\n", MMC_SLOT_EMMC));
+  DEBUG((EFI_D_ERROR, "Initializing eMMC (mmc slot %u)\n", MMC_SLOT_EMMC));
 
   ConfigureSdc1Pins();
 
@@ -128,16 +132,26 @@ STATIC VOID InitEmmc(INIT_SLOT_CB InitSlot)
   }
 }
 
+
+STATIC VOID EnableSdRegulators(VOID)
+{
+  /* Temporarily disabled: LDO writes were hanging the SD init path. */
+  DEBUG((EFI_D_ERROR, "SD: regulator enable skipped (diagnostic)\n"));
+  return;
+}
+
 STATIC VOID InitSdCard(INIT_SLOT_CB InitSlot)
 {
   struct mmc_config_data config = {0};
 
   if (!SdCardPresent()) {
-    DEBUG((EFI_D_INFO, "No SD card inserted, skipping mmc slot %u\n", MMC_SLOT_SD));
+    DEBUG((EFI_D_ERROR, "No SD card inserted, skipping mmc slot %u\n", MMC_SLOT_SD));
     return;
   }
 
-  DEBUG((EFI_D_LOAD, "Initializing SD card (mmc slot %u)\n", MMC_SLOT_SD));
+  DEBUG((EFI_D_ERROR, "Initializing SD card (mmc slot %u)\n", MMC_SLOT_SD));
+
+  EnableSdRegulators();
 
   ConfigureSdc2Pins();
 
