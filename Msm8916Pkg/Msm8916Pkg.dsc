@@ -209,6 +209,8 @@
   gQcomTokenSpaceGuid.PcdSpmiBaseAddress|0x02000000
   gQcomTokenSpaceGuid.PcdSpmiVersion|2
   gQcomTokenSpaceGuid.PcdPmicArbCoreAddress|0x0200F000
+  # PMIC arbiter v2 has 512 APIDs; 128 misses higher-mapped peripherals.
+  gQcomTokenSpaceGuid.PcdSpmiMaxPeripherals|512
 
   # SoC Drivers MMC
   gQcomTokenSpaceGuid.PcdSdccMciHcMode|0x00000078

@@ -19,8 +19,16 @@
 
 #include <Protocol/AbsolutePointer.h>
 #include <Protocol/DevicePath.h>
+#include <Protocol/QcomPm8x41.h>
 
 #include <Library/GpioI2cLib.h>
+
+/* PM8916 LDO5 (SID 1, PPID 0x44): touch 1.8V rail on GT510. */
+#define PM8916_LDO5                 0x14400
+#define LDO_STATUS1                 0x08
+#define   LDO_STATUS1_READY         0x80
+#define LDO_EN_CTL                  0x46
+#define   LDO_EN_CTL_ENABLE         0x80
 
 #define GPIO_NONE 0xFFFFFFFF
 
@@ -305,6 +313,40 @@ TouchWaitForInput (
 }
 
 STATIC VOID
+MxtEnsureTouchRail (
+  VOID
+  )
+{
+  QCOM_PM8X41_PROTOCOL  *Pmic = NULL;
+  UINT8                  St;
+  UINT8                  En;
+  UINT8                  St2;
+
+  if (EFI_ERROR(gBS->LocateProtocol(&gQcomPm8x41ProtocolGuid, NULL,
+                                    (VOID **)&Pmic)) ||
+      (Pmic == NULL)) {
+    DEBUG((EFI_D_ERROR, "maXTouch: PMIC protocol missing, cannot check LDO5\n"));
+    return;
+  }
+
+  St = Pmic->pm8x41_reg_read(PM8916_LDO5 + LDO_STATUS1);
+  En = Pmic->pm8x41_reg_read(PM8916_LDO5 + LDO_EN_CTL);
+  DEBUG((EFI_D_ERROR, "maXTouch: LDO5 status=%02x en_ctl=%02x\n", St, En));
+
+  if ((St & LDO_STATUS1_READY) != 0) {
+    return;
+  }
+
+  Pmic->pm8x41_reg_write(PM8916_LDO5 + LDO_EN_CTL,
+                         (UINT8)(En | LDO_EN_CTL_ENABLE));
+  MicroSecondDelay(2000);
+  St2 = Pmic->pm8x41_reg_read(PM8916_LDO5 + LDO_STATUS1);
+  DEBUG((EFI_D_ERROR,
+         "maXTouch: LDO5 enable attempted, status=%02x en_ctl=%02x\n", St2,
+         Pmic->pm8x41_reg_read(PM8916_LDO5 + LDO_EN_CTL)));
+}
+
+STATIC VOID
 MxtPowerOn (
   IN TOUCH_DEV  *Dev
   )
@@ -365,7 +407,12 @@ AtmelMaXTouchDxeInitialize (
   Dev->PowerGpio        = FixedPcdGet32(PcdTouchPowerEnableGpio);
   Dev->ResetGpio        = FixedPcdGet32(PcdTouchResetGpio);
 
+  MxtEnsureTouchRail();
   MxtPowerOn(Dev);
+  DEBUG((EFI_D_ERROR, "maXTouch: pwr gpio=%u rst gpio=%u int gpio=%u\n",
+         (UINT32)gGpioTlmm->Get(Dev->PowerGpio),
+         (UINT32)gGpioTlmm->Get(Dev->ResetGpio),
+         (UINT32)gGpioTlmm->Get(Dev->IntGpio)));
 
   /* Switch pins to GPIO mode (function 0) before bit-banging */
   gGpioTlmm->SetFunction(Dev->Bus.SdaGpio, 0);
@@ -385,6 +432,16 @@ AtmelMaXTouchDxeInitialize (
   DEBUG((EFI_D_ERROR, "maXTouch: I2C pins after init SDA=%u SCL=%u\n",
          (UINT32)gGpioTlmm->Get(Dev->Bus.SdaGpio), (UINT32)gGpioTlmm->Get(Dev->Bus.SclGpio)));
 
+  /* Release both lines so the external pull-ups can set the idle level.
+   * SDA must be high here, otherwise the bus is stuck or the chip is
+   * unpowered and clamping the line. */
+  gGpioTlmm->DirectionInput(Dev->Bus.SdaGpio);
+  gGpioTlmm->DirectionInput(Dev->Bus.SclGpio);
+  MicroSecondDelay(200);
+  DEBUG((EFI_D_ERROR, "maXTouch: I2C idle SDA=%u SCL=%u\n",
+         (UINT32)gGpioTlmm->Get(Dev->Bus.SdaGpio), (UINT32)gGpioTlmm->Get(Dev->Bus.SclGpio)));
+  GpioI2cInit(&Dev->Bus);
+
   Status = MxtReadReg(Dev, 0, MXT_INFO_SIZE, Info);
   if (EFI_ERROR(Status)) {
     DEBUG((EFI_D_ERROR, "maXTouch: no response at 0x%02x: %r\n", Dev->Address, Status));
@@ -392,6 +449,8 @@ AtmelMaXTouchDxeInitialize (
   }
 
   Dev->ObjectNum = Info[6];
+  DEBUG((EFI_D_ERROR, "maXTouch: INFO %02x %02x %02x %02x %02x %02x %02x\n",
+         Info[0], Info[1], Info[2], Info[3], Info[4], Info[5], Info[6]));
   DEBUG((EFI_D_ERROR, "maXTouch: family %u variant %u version %u build %u matrix %ux%u objects %u\n",
          Info[0], Info[1], Info[2], Info[3], Info[4], Info[5], Info[6]));
 

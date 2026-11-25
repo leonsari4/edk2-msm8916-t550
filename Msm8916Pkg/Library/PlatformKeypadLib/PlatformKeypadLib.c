@@ -33,12 +33,15 @@
 //   0 KPDPWR_ON, 1 RESIN_ON, 2 CBLPWR_ON, 3 KPDPWR_BARK,
 //   4 RESIN_BARK, 5 K_R_BARK, 6 PMIC_WD_BARK, 7 SOFT_RESET
 //
+#define PON_REV2                0x801
 #define PON_INT_RT_STS          0x810
+#define PON_INT_SET_TYPE        0x811
 #define PON_INT_LATCHED_CLR     0x814
 #define PON_INT_EN_SET          0x815
 #define PON_INT_LATCHED_STS     0x818
 #define PON_INT_PENDING_STS     0x819
 #define PON_PULL_CTL            0x870
+#define PON_DBC_CTL             0x871
 #define PON_PERPH_TYPE          0x804
 #define PON_PERPH_SUBTYPE       0x805
 
@@ -98,6 +101,8 @@ typedef struct {
   QCOM_PM8X41_PROTOCOL               *Pmic;
   BOOLEAN                            PmicKeysEnabled;
   UINT8                              PmicLastRtSts;
+  UINT8                              PmicLastLatched;
+  UINTN                              PmicPollCount;
   BOOLEAN                            Previous[KEY_INDEX_COUNT];
   BOOLEAN                            Raw[KEY_INDEX_COUNT];
   UINTN                              Stable[KEY_INDEX_COUNT];
@@ -303,11 +308,15 @@ ConfigurePmicKeys (
 {
   UINT8 Type;
   UINT8 Subtype;
+  UINT8 Rev2;
   UINT8 Pull;
   UINT8 RtSts;
   UINT8 Latched;
   UINT8 Pending;
   UINT8 Reason1;
+  UINT8 SetType;
+  UINT8 DbCtl;
+  UINT8 Enable;
 
   if (Dev->PmicKeysEnabled) {
     return;
@@ -325,15 +334,20 @@ ConfigurePmicKeys (
 
   Type    = Dev->Pmic->pm8x41_reg_read(PON_PERPH_TYPE);
   Subtype = Dev->Pmic->pm8x41_reg_read(PON_PERPH_SUBTYPE);
+  Rev2    = Dev->Pmic->pm8x41_reg_read(PON_REV2);
   Pull    = Dev->Pmic->pm8x41_reg_read(PON_PULL_CTL);
   RtSts   = Dev->Pmic->pm8x41_reg_read(PON_INT_RT_STS);
   Latched = Dev->Pmic->pm8x41_reg_read(PON_INT_LATCHED_STS);
   Pending = Dev->Pmic->pm8x41_reg_read(PON_INT_PENDING_STS);
   Reason1 = Dev->Pmic->pm8x41_reg_read(0x808);
+  SetType = Dev->Pmic->pm8x41_reg_read(PON_INT_SET_TYPE);
+  DbCtl   = Dev->Pmic->pm8x41_reg_read(PON_DBC_CTL);
   DEBUG((DEBUG_ERROR,
-         "PlatformKeypad: PON type=%02x subtype=%02x pull=%02x rt=%02x "
-         "latched=%02x pending=%02x reason1=%02x\n",
-         Type, Subtype, Pull, RtSts, Latched, Pending, Reason1));
+         "PlatformKeypad: PON rev2=%02x type=%02x subtype=%02x pull=%02x "
+         "rt=%02x latched=%02x pending=%02x reason1=%02x set_type=%02x "
+         "db=%02x\n",
+         Rev2, Type, Subtype, Pull, RtSts, Latched, Pending, Reason1, SetType,
+         DbCtl));
 
   Dev->Pmic->pm8x41_reg_write(
       PON_PULL_CTL, (UINT8)(Pull | PON_PULL_KPDPWR | PON_PULL_RESIN));
@@ -341,12 +355,17 @@ ConfigurePmicKeys (
   Dev->Pmic->pm8x41_reg_write(PON_INT_EN_SET,
                               (UINT8)(PON_KPDPWR_ON | PON_RESIN_ON));
 
-  Pull  = Dev->Pmic->pm8x41_reg_read(PON_PULL_CTL);
-  RtSts = Dev->Pmic->pm8x41_reg_read(PON_INT_RT_STS);
-  DEBUG((DEBUG_ERROR, "PlatformKeypad: PON configured pull=%02x rt=%02x\n",
-         Pull, RtSts));
+  Pull   = Dev->Pmic->pm8x41_reg_read(PON_PULL_CTL);
+  RtSts  = Dev->Pmic->pm8x41_reg_read(PON_INT_RT_STS);
+  Enable = Dev->Pmic->pm8x41_reg_read(PON_INT_EN_SET);
+  Latched = Dev->Pmic->pm8x41_reg_read(PON_INT_LATCHED_STS);
+  DEBUG((DEBUG_ERROR,
+         "PlatformKeypad: PON configured pull=%02x rt=%02x en=%02x "
+         "latched=%02x\n",
+         Pull, RtSts, Enable, Latched));
 
   Dev->PmicLastRtSts   = RtSts;
+  Dev->PmicLastLatched = Latched;
   Dev->PmicKeysEnabled = TRUE;
 }
 
@@ -357,6 +376,7 @@ PollPmicButtons (
   )
 {
   UINT8 RtSts;
+  UINT8 Latched;
 
   if (!Dev->PmicKeysEnabled) {
     ConfigurePmicKeys(Dev);
@@ -365,13 +385,21 @@ PollPmicButtons (
     }
   }
 
-  RtSts = Dev->Pmic->pm8x41_reg_read(PON_INT_RT_STS);
-  if (RtSts != Dev->PmicLastRtSts) {
-    UINT8 Latched = Dev->Pmic->pm8x41_reg_read(PON_INT_LATCHED_STS);
+  RtSts   = Dev->Pmic->pm8x41_reg_read(PON_INT_RT_STS);
+  Latched = Dev->Pmic->pm8x41_reg_read(PON_INT_LATCHED_STS);
+  if (Dev->PmicPollCount == 0) {
     DEBUG((DEBUG_ERROR,
-           "PlatformKeypad: PON rt=%02x (was %02x) latched=%02x\n", RtSts,
-           Dev->PmicLastRtSts, Latched));
-    Dev->PmicLastRtSts = RtSts;
+           "PlatformKeypad: PMIC poll first tick rt=%02x latched=%02x\n",
+           RtSts, Latched));
+  }
+  Dev->PmicPollCount++;
+  if ((RtSts != Dev->PmicLastRtSts) ||
+      (Latched != Dev->PmicLastLatched)) {
+    DEBUG((DEBUG_ERROR,
+           "PlatformKeypad: PON rt=%02x (was %02x) latched=%02x (was %02x)\n",
+           RtSts, Dev->PmicLastRtSts, Latched, Dev->PmicLastLatched));
+    Dev->PmicLastRtSts   = RtSts;
+    Dev->PmicLastLatched = Latched;
   }
 
   // Power: tap = Enter, hold = Esc. Vol-Down: tap = Down, hold = Up.

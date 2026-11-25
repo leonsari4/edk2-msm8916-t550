@@ -42,6 +42,7 @@
 [Protocols]
   gEfiAbsolutePointerProtocolGuid
   gEfiDevicePathProtocolGuid
+  gQcomPm8x41ProtocolGuid
 
 [Depex]
-  TRUE
+  gQcomPm8x41ProtocolGuid

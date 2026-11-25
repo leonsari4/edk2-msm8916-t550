@@ -41,27 +41,40 @@
 static uint32_t pmic_arb_chnl_num;
 static uint32_t pmic_arb_owner_id;
 static uint32_t pmic_arb_ver;
-static uint8_t *chnl_tbl;
+static uint16_t *chnl_tbl;
 static uint32_t max_peripherals;
 static uint32_t spmi_version = 0;
 
 static void spmi_lookup_chnl_number(void)
 {
 	uint32_t i;
+	uint32_t map;
 	uint8_t slave_id = 0;
 	uint8_t ppid_address = 0;
-	/* We need a max of sid (4 bits) + pid (8bits) of uint8_t's */
-	uint32_t chnl_tbl_sz = BIT(12) * sizeof(uint8_t);
+	/* We need a max of sid (4 bits) + pid (8bits) of entries. APIDs on
+	 * arbiter v2 go up to 511, so the table entries cannot be uint8_t. */
+	uint32_t chnl_tbl_sz = BIT(12) * sizeof(uint16_t);
 
 	/* Allocate the channel table */
-	chnl_tbl = (uint8_t *) malloc(chnl_tbl_sz);
+	chnl_tbl = (uint16_t *) malloc(chnl_tbl_sz);
 	ASSERT(chnl_tbl);
+
+	/* Unmapped PPIDs must not inherit whatever the allocator left behind. */
+	for (i = 0; i < BIT(12); i++) {
+		chnl_tbl[i] = 0;
+	}
 
 	for(i = 0; i < max_peripherals; i++)
 	{
 		if (spmi_version==2) {
-			slave_id = (readl(PMICV2_ARB_REG_CHLN(i)) & 0xf0000) >> 16;
-			ppid_address = (readl(PMICV2_ARB_REG_CHLN(i)) & 0xff00) >> 8;
+			map = readl(PMICV2_ARB_REG_CHLN(i));
+			/* Zero entries are unallocated APIDs. Mapping them to
+			 * PPID 0 would overwrite the real PPID 0 entry. */
+			if (map == 0) {
+				continue;
+			}
+			slave_id = (map & 0xf0000) >> 16;
+			ppid_address = (map & 0xff00) >> 8;
 		}
 
 		chnl_tbl[CHNL_IDX(slave_id, ppid_address)] = i;
@@ -104,6 +117,36 @@ int spmi_init(void)
 	else
 	{
 		spmi_lookup_chnl_number();
+
+		/* PON is SID 0, PPID 0x8 on PM8916. Log the APID and the
+		 * ownership entry; if the APID is wrong every PON access will
+		 * silently hit another peripheral instead. The ownership table
+		 * lives in the "cnfg" window (PMIC_ARB_CORE + 0xA000) at
+		 * offset 0x700, as in Linux spmi-pmic-arb v2. */
+		{
+			uint32_t pon_apid = chnl_tbl[CHNL_IDX(0, 8)];
+			uint32_t pon_map = readl(PMICV2_ARB_REG_CHLN(pon_apid));
+			uint32_t pon_owner =
+			    readl(PMIC_ARB_CORE + 0xA000 + 0x700 + 4 * pon_apid) &
+			    0x7;
+			uint32_t found = 0xFFFFFFFF;
+			uint32_t map2;
+
+			for (i = 0; i < max_peripherals; i++) {
+				map2 = readl(PMICV2_ARB_REG_CHLN(i));
+				if (((map2 & 0xf0000) >> 16) == 0 &&
+				    ((map2 & 0xff00) >> 8) == 8) {
+					found = i;
+					break;
+				}
+			}
+
+			DEBUG((EFI_D_ERROR,
+			       "SPMI: hw=%08x max=%u PON apid=%u map=%08x "
+			       "owner=%u scan=%u\n",
+			       pmic_arb_ver, max_peripherals, pon_apid, pon_map,
+			       pon_owner, found));
+		}
 	}
 
 	return 0;
