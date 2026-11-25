@@ -131,12 +131,13 @@ int spmi_init(void)
 			    0x7;
 			uint32_t found = 0xFFFFFFFF;
 			uint32_t map2;
+			uint32_t j;
 
-			for (i = 0; i < max_peripherals; i++) {
-				map2 = readl(PMICV2_ARB_REG_CHLN(i));
+			for (j = 0; j < max_peripherals; j++) {
+				map2 = readl(PMICV2_ARB_REG_CHLN(j));
 				if (((map2 & 0xf0000) >> 16) == 0 &&
 				    ((map2 & 0xff00) >> 8) == 8) {
-					found = i;
+					found = j;
 					break;
 				}
 			}
