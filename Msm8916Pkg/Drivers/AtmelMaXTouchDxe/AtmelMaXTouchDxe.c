@@ -138,6 +138,73 @@ MxtWriteReg (
   return GpioI2cTransfer(&Dev->Bus, Dev->Address, Buf, 3, NULL, 0);
 }
 
+STATIC EFI_STATUS
+MxtReadRegRetry (
+  IN  TOUCH_DEV  *Dev,
+  IN  UINT16     Reg,
+  IN  UINTN      Count,
+  OUT UINT8      *Buf
+  )
+{
+  EFI_STATUS Status = EFI_DEVICE_ERROR;
+  UINTN      Retry;
+
+  for (Retry = 0; Retry < 3; Retry++) {
+    Status = MxtReadReg(Dev, Reg, Count, Buf);
+    if (!EFI_ERROR(Status)) {
+      return EFI_SUCCESS;
+    }
+
+    DEBUG((EFI_D_ERROR,
+           "maXTouch: read %u bytes @0x%04x failed (%r), retry %u\n",
+           (UINT32)Count, (UINT32)Reg, Status, (UINT32)(Retry + 1)));
+    MicroSecondDelay(5000);
+    GpioI2cInit(&Dev->Bus);
+  }
+
+  return Status;
+}
+
+/*
+ * The object table can be several hundred bytes long.  Read it in small
+ * chunks: this works around bit-banged transfers that become unreliable
+ * once the slave has been clocked for a long time, and it tells us exactly
+ * which part of the table the controller refuses.
+ */
+STATIC EFI_STATUS
+MxtReadObjectTable (
+  IN  TOUCH_DEV  *Dev,
+  OUT UINT8      *Buf,
+  IN  UINTN      Size
+  )
+{
+  EFI_STATUS Status;
+  UINTN      Offset = 0;
+
+  while (Offset < Size) {
+    UINTN Chunk = Size - Offset;
+
+    if (Chunk > 16) {
+      Chunk = 16;
+    }
+
+    Status = MxtReadRegRetry(Dev, (UINT16)(MXT_OBJECT_START + Offset),
+                             Chunk, Buf + Offset);
+    if (EFI_ERROR(Status)) {
+      DEBUG((EFI_D_ERROR,
+             "maXTouch: object table chunk %u/%u @0x%04x failed: %r\n",
+             (UINT32)Offset, (UINT32)Size,
+             (UINT32)(MXT_OBJECT_START + Offset), Status));
+      return Status;
+    }
+
+    Offset += Chunk;
+    MicroSecondDelay(1000);
+  }
+
+  return EFI_SUCCESS;
+}
+
 STATIC MXT_OBJECT *
 MxtGetObject (
   IN TOUCH_DEV  *Dev,
@@ -465,11 +532,19 @@ AtmelMaXTouchDxeInitialize (
     goto Fail;
   }
 
-  Status = MxtReadReg(Dev, MXT_OBJECT_START, ObjTableSize, ObjBuf);
+  //
+  // Give the controller a moment after the INFO read, then fetch the object
+  // table in chunks so a failure points at the exact offset.
+  //
+  MicroSecondDelay(10000);
+  Status = MxtReadObjectTable(Dev, ObjBuf, ObjTableSize);
   if (EFI_ERROR(Status)) {
     DEBUG((EFI_D_ERROR, "maXTouch: object table read failed: %r\n", Status));
     goto Fail;
   }
+  DEBUG((EFI_D_ERROR,
+         "maXTouch: object table %02x %02x %02x %02x %02x %02x ...\n",
+         ObjBuf[0], ObjBuf[1], ObjBuf[2], ObjBuf[3], ObjBuf[4], ObjBuf[5]));
 
   Dev->Objects = AllocateZeroPool(Dev->ObjectNum * sizeof(MXT_OBJECT));
   if (Dev->Objects == NULL) {

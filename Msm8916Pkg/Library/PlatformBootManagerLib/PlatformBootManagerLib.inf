@@ -91,5 +91,6 @@
   gEfiSimpleTextInputExProtocolGuid
   gEsrtManagementProtocolGuid
   gPlatformBootManagerProtocolGuid
+  gEdkiiPlatformBootManagerProtocolGuid
   gEFIDroidKeypadDeviceProtocolGuid
   gPlatformKeypadPollProtocolGuid

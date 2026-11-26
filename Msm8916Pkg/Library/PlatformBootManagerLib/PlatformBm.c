@@ -357,6 +357,83 @@ STATIC CONST EFI_GUID mMmchsDevicePathGuid = {
   { 0xa6, 0x60, 0x01, 0x6d, 0x02, 0x81, 0x05, 0x41 }
 };
 
+#pragma pack(1)
+typedef struct {
+  VENDOR_DEVICE_PATH       Vendor;
+  EFI_DEVICE_PATH_PROTOCOL End;
+} MMCHS_BOOT_DEVICE_PATH;
+#pragma pack()
+
+STATIC CONST MMCHS_BOOT_DEVICE_PATH mMmchsBootDevicePathTemplate = {
+  {
+    {
+      HARDWARE_DEVICE_PATH,
+      HW_VENDOR_DP,
+      {
+        (UINT8)(sizeof(VENDOR_DEVICE_PATH)),
+        (UINT8)((sizeof(VENDOR_DEVICE_PATH)) >> 8)
+      }
+    },
+    mMmchsDevicePathGuid
+  },
+  {
+    END_DEVICE_PATH_TYPE,
+    END_ENTIRE_DEVICE_PATH_SUBTYPE,
+    {sizeof(EFI_DEVICE_PATH_PROTOCOL), 0}
+  }
+};
+
+//
+// MdeModulePkg's platform boot manager protocol.  EmbeddedPkg publishes a
+// different protocol under the same header guard, so declare the MdeModulePkg
+// layout locally.  BDS calls RefreshAllBootOptions on every refresh (including
+// the one UiApp performs when it opens the boot menu); returning an empty list
+// keeps the auto-enumerated "UEFI Misc Device" entries out of NVRAM.
+//
+typedef
+EFI_STATUS
+(EFIAPI *PLATFORM_REFRESH_ALL_BOOT_OPTIONS)(
+  IN  CONST EFI_BOOT_MANAGER_LOAD_OPTION  *BootOptions,
+  IN  CONST UINTN                        BootOptionsCount,
+  OUT       EFI_BOOT_MANAGER_LOAD_OPTION **UpdatedBootOptions,
+  OUT       UINTN                        *UpdatedBootOptionsCount
+  );
+
+typedef struct {
+  UINT64                             Revision;
+  PLATFORM_REFRESH_ALL_BOOT_OPTIONS  RefreshAllBootOptions;
+} MDE_PLATFORM_BOOT_MANAGER_PROTOCOL;
+
+STATIC EFI_STATUS
+EFIAPI
+PlatformRefreshAllBootOptions (
+  IN  CONST EFI_BOOT_MANAGER_LOAD_OPTION  *BootOptions,
+  IN  CONST UINTN                        BootOptionsCount,
+  OUT       EFI_BOOT_MANAGER_LOAD_OPTION **UpdatedBootOptions,
+  OUT       UINTN                        *UpdatedBootOptionsCount
+  )
+{
+  UINTN Index;
+
+  DEBUG((DEBUG_ERROR, "PlatformBm: refresh callback (%u auto options)\n",
+         (UINTN)BootOptionsCount));
+  for (Index = 0; Index < BootOptionsCount; Index++) {
+    DEBUG((DEBUG_ERROR, "PlatformBm:  drop auto '%s'\n",
+           BootOptions[Index].Description));
+  }
+
+  *UpdatedBootOptions      = NULL;
+  *UpdatedBootOptionsCount = 0;
+  return EFI_SUCCESS;
+}
+
+STATIC MDE_PLATFORM_BOOT_MANAGER_PROTOCOL mPlatformBootManagerProtocol = {
+  0x00000001,
+  PlatformRefreshAllBootOptions
+};
+
+STATIC EFI_HANDLE mPlatformBootManagerHandle = NULL;
+
 STATIC
 VOID
 PlatformLogBootOptions (
@@ -451,6 +528,20 @@ PlatformRemoveAutoBootOptions (
 }
 
 STATIC
+BOOLEAN
+PlatformIsMmchsNode (
+  IN VENDOR_DEVICE_PATH *Node
+  )
+{
+  //
+  // SdhciMMCHSDxe stores the slot number in Guid.Data4[7], so the full GUID
+  // differs for eMMC and SD.  Compare every byte except that slot byte.
+  //
+  return (BOOLEAN)(CompareMem(&Node->Guid, &mMmchsDevicePathGuid,
+                              sizeof(EFI_GUID) - 1) == 0);
+}
+
+STATIC
 INTN
 PlatformGetMmcSlot (
   IN EFI_DEVICE_PATH_PROTOCOL *DevicePath
@@ -462,8 +553,7 @@ PlatformGetMmcSlot (
        Node = NextDevicePathNode(Node)) {
     if ((DevicePathType(Node) == HARDWARE_DEVICE_PATH) &&
         (DevicePathSubType(Node) == HW_VENDOR_DP) &&
-        CompareGuid(&((VENDOR_DEVICE_PATH *)Node)->Guid,
-                    &mMmchsDevicePathGuid)) {
+        PlatformIsMmchsNode((VENDOR_DEVICE_PATH *)Node)) {
       return (INTN)((VENDOR_DEVICE_PATH *)Node)->Guid.Data4[7];
     }
   }
@@ -539,27 +629,33 @@ PlatformRegisterMmcBootOptions (
   FreePool(Handles);
 
   for (Slot = 1; Slot <= 2; Slot++) {
-    EFI_DEVICE_PATH_PROTOCOL *   DevicePath;
+    MMCHS_BOOT_DEVICE_PATH      DevicePath;
     EFI_BOOT_MANAGER_LOAD_OPTION NewOption;
 
-    if (SlotHandle[Slot] == NULL) {
-      DEBUG((DEBUG_ERROR, "PlatformBm: MMC slot %u not present\n",
-             (UINTN)Slot));
-      continue;
-    }
-    DevicePath = DevicePathFromHandle(SlotHandle[Slot]);
+    //
+    // Build the vendor device path ourselves instead of depending on a
+    // BlockIo handle being present.  This keeps the "SD Card" entry visible
+    // even when no card is inserted; BDS will find the matching handle and
+    // its FAT partitions once a card is present.
+    //
+    DevicePath = mMmchsBootDevicePathTemplate;
+    DevicePath.Vendor.Guid.Data4[7] = (UINT8)Slot;
+
     PlatformDeleteBootOptionByDescription(SlotName[Slot]);
     Status = EfiBootManagerInitializeLoadOption(
         &NewOption, LoadOptionNumberUnassigned, LoadOptionTypeBoot,
-        LOAD_OPTION_ACTIVE, SlotName[Slot], DevicePath, NULL, 0);
+        LOAD_OPTION_ACTIVE, SlotName[Slot],
+        (EFI_DEVICE_PATH_PROTOCOL *)&DevicePath, NULL, 0);
     if (EFI_ERROR(Status)) {
       DEBUG((DEBUG_ERROR, "PlatformBm: init '%s' option failed: %r\n",
              SlotName[Slot], Status));
       continue;
     }
     Status = EfiBootManagerAddLoadOptionVariable(&NewOption, MAX_UINTN);
-    DEBUG((DEBUG_ERROR, "PlatformBm: add '%s' option %04x: %r\n",
-           SlotName[Slot], (UINTN)NewOption.OptionNumber, Status));
+    DEBUG((DEBUG_ERROR,
+           "PlatformBm: add '%s' option %04x (slot %u, handle %p): %r\n",
+           SlotName[Slot], (UINTN)NewOption.OptionNumber, (UINTN)Slot,
+           SlotHandle[Slot], Status));
     EfiBootManagerFreeLoadOption(&NewOption);
   }
 }
@@ -913,8 +1009,22 @@ VOID EFIAPI PlatformBootManagerAfterConsole(VOID)
   HandleCapsules();
 
   //
+  // Install the refresh filter before enumerating anything.  UiApp calls
+  // EfiBootManagerRefreshAllBootOption() again when it opens the boot menu,
+  // so filtering only here would let the auto entries come back.
+  //
+  if (mPlatformBootManagerHandle == NULL) {
+    Status = gBS->InstallProtocolInterface(
+        &mPlatformBootManagerHandle,
+        &gEdkiiPlatformBootManagerProtocolGuid,
+        EFI_NATIVE_INTERFACE,
+        &mPlatformBootManagerProtocol);
+    DEBUG((DEBUG_ERROR, "PlatformBm: install refresh filter: %r\n", Status));
+  }
+
+  //
   // Enumerate all possible boot options, then replace the auto-generated
-  // ones with the two entries this device should offer.
+  // ones with the entries this device should offer.
   //
   EfiBootManagerRefreshAllBootOption();
   PlatformLogBootOptions("after refresh");
