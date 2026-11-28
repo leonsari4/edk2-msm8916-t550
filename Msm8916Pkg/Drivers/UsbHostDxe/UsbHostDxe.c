@@ -28,6 +28,7 @@
 #include <Library/GpioI2cLib.h>
 #include <Library/QcomClockLib.h>
 #include <Library/NonDiscoverableDeviceRegistrationLib.h>
+#include <Protocol/Usb2HostController.h>
 
 #define GPIO_NONE                  0xFFFFFFFF
 
@@ -98,6 +99,13 @@
 #define STEP(s) DEBUG((EFI_D_ERROR, "UsbHost: " s "\n"))
 
 #define USB_BASE                   0x078D9000
+/*
+ * The EHCI register file starts at the CAPLENGTH register, not at the
+ * ChipIdea vendor block.  EhciDxe maps BAR0 and expects CAPLENGTH at
+ * offset 0, so BAR0 has to point here.
+ */
+#define USB_EHCI_BASE              (USB_BASE + 0x100)
+#define USB_EHCI_SIZE              0x0E00
 #define USB_ID                     (USB_BASE + 0x000)
 #define USB_SBUSCFG                (USB_BASE + 0x090)
 #define USB_AHB_MODE               (USB_BASE + 0x098)
@@ -162,6 +170,7 @@
 #define   ULPI_MISC_A_VBUSVLDEXTSEL BIT1
 
 STATIC UINTN mOp;
+STATIC BOOLEAN mLpm;
 STATIC BOOLEAN mExternalVbus;
 
 STATIC BOOLEAN
@@ -463,7 +472,7 @@ RouteMuicToUsb (
 
   Bus.SdaGpio      = FixedPcdGet32(PcdMuicI2cSdaGpio);
   Bus.SclGpio      = FixedPcdGet32(PcdMuicI2cSclGpio);
-  Bus.HalfPeriodUs = 5;
+  Bus.HalfPeriodUs = 10;
   GpioI2cInit(&Bus);
 
   DumpMuic(&Bus, Addr, "before");
@@ -495,7 +504,7 @@ EnableOtgVbus (
 
   Bus.SdaGpio      = FixedPcdGet32(PcdOtgBoostI2cSdaGpio);
   Bus.SclGpio      = FixedPcdGet32(PcdOtgBoostI2cSclGpio);
-  Bus.HalfPeriodUs = 5;
+  Bus.HalfPeriodUs = 10;
 
   DEBUG((EFI_D_ERROR, "UsbHost: I2C pins before SetFunction SDA=%u SCL=%u\n",
          (UINT32)gGpioTlmm->Get(Bus.SdaGpio), (UINT32)gGpioTlmm->Get(Bus.SclGpio)));
@@ -812,6 +821,71 @@ ResetAndConfigure (
   return EFI_SUCCESS;
 }
 
+STATIC EFI_EVENT mUsbStatusEvent;
+
+/*
+ * One-shot diagnostic: after EhciDxe and UsbBusDxe have had a chance to
+ * run, log the controller state and whether a USB2 host controller
+ * protocol appeared.  This makes a failed enumeration obvious in the
+ * serial log without needing a debugger.
+ */
+STATIC VOID
+EFIAPI
+UsbStatusNotify (
+  IN EFI_EVENT  Event,
+  IN VOID       *Context
+  )
+{
+  EFI_STATUS  Status;
+  VOID        *Hc;
+
+  (VOID)Context;
+  gBS->CloseEvent(Event);
+  Status = gBS->LocateProtocol(&gEfiUsb2HcProtocolGuid, NULL, &Hc);
+  DEBUG((EFI_D_ERROR,
+         "UsbHost: 3s status USBMODE %08x USBCMD %08x USBSTS %08x PORTSC %08x USB2HC %r\n",
+         MmioRead32(mOp + (mLpm ? OP_USBMODE_LPM : OP_USBMODE_NOLPM)),
+         MmioRead32(mOp + OP_USBCMD),
+         MmioRead32(mOp + 0x04),
+         MmioRead32(mOp + OP_PORTSC),
+         Status));
+}
+
+/*
+ * Called by NonDiscoverablePciDeviceDxe when EhciDxe enables the emulated
+ * PCI device.  Re-assert the ChipIdea-specific setup: EhciDxe only knows
+ * the generic EHCI registers, so USBMODE and the ULPI transceiver select
+ * have to stay in host mode for its reset/init sequence to work.
+ */
+STATIC EFI_STATUS
+EFIAPI
+EhciChipIdeaInit (
+  IN NON_DISCOVERABLE_DEVICE  *This
+  )
+{
+  (VOID)This;
+
+  DEBUG((EFI_D_ERROR, "UsbHost: EHCI init callback, USBMODE %08x PORTSC %08x\n",
+         MmioRead32(mOp + (mLpm ? OP_USBMODE_LPM : OP_USBMODE_NOLPM)),
+         MmioRead32(mOp + OP_PORTSC)));
+
+  MmioAndThenOr32(mOp + (mLpm ? OP_USBMODE_LPM : OP_USBMODE_NOLPM),
+                  ~USBMODE_CM_MASK, USBMODE_CM_HOST);
+  if (mLpm) {
+    MmioAndThenOr32(mOp + OP_DEVLC, ~DEVLC_PTS_MASK, DEVLC_PTS_ULPI);
+  } else {
+    MmioAndThenOr32(mOp + OP_PORTSC, ~PORTSC_PTS_MASK, PORTSC_PTS_ULPI);
+  }
+
+  MmioOr32(mOp + OP_PORTSC, PORTSC_PP);
+  UlpiWrite(ULPI_MISC_A_SET, ULPI_MISC_A_VBUSVLDEXTSEL | ULPI_MISC_A_VBUSVLDEXT);
+  UlpiWrite(ULPI_OTG_CTRL_SET, ULPI_OTG_DP_PULLDOWN | ULPI_OTG_DM_PULLDOWN);
+  MmioOr32(USB_GENCONFIG_2, GENCONFIG_2_SESS_VLD_CTRL_EN);
+  MmioOr32(mOp + OP_USBCMD, USBCMD_SESS_VLD_CTRL);
+
+  return EFI_SUCCESS;
+}
+
 EFI_STATUS
 EFIAPI
 UsbHostDxeInitialize (
@@ -852,6 +926,7 @@ UsbHostDxeInitialize (
 
   mOp = USB_CAP + (MmioRead32(USB_CAP) & 0xFF);
   Lpm = (MmioRead32(USB_HCCPARAMS) & HCCPARAMS_LEN) != 0;
+  mLpm = Lpm;
 
   Status = ResetAndConfigure(Lpm);
   if (EFI_ERROR(Status)) {
@@ -865,7 +940,37 @@ UsbHostDxeInitialize (
     SelfTest(Lpm);
   }
 
-  DEBUG((EFI_D_ERROR, "UsbHost: controller ready (EHCI not exposed to UEFI USB stack)\n"));
+  /*
+   * Hand the controller to the generic EHCI stack.  NonDiscoverablePciDeviceDxe
+   * turns this into a PciIo handle with the EHCI class code, EhciDxe drives it,
+   * and UsbBusDxe/UsbKbDxe make an OTG keyboard usable from the Shell and the
+   * boot menu.
+   */
+  Status = RegisterNonDiscoverableMmioDevice(
+             NonDiscoverableDeviceTypeEhci,
+             NonDiscoverableDeviceDmaTypeNonCoherent,
+             EhciChipIdeaInit,
+             NULL,
+             1,
+             (UINTN)USB_EHCI_BASE,
+             (UINTN)USB_EHCI_SIZE
+             );
+  DEBUG((EFI_D_ERROR,
+         "UsbHost: EHCI registered at 0x%08x (%u bytes): %r\n",
+         (UINT32)USB_EHCI_BASE, (UINT32)USB_EHCI_SIZE, Status));
+
+  if (!EFI_ERROR(Status)) {
+    Status = gBS->CreateEvent(
+                    EVT_TIMER | EVT_NOTIFY_SIGNAL,
+                    TPL_CALLBACK,
+                    UsbStatusNotify,
+                    NULL,
+                    &mUsbStatusEvent
+                    );
+    if (!EFI_ERROR(Status)) {
+      gBS->SetTimer(mUsbStatusEvent, TimerRelative, 3 * 10000000ULL);
+    }
+  }
 
   return EFI_SUCCESS;
 }

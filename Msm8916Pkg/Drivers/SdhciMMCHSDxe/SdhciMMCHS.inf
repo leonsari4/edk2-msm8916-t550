@@ -20,6 +20,7 @@
   Msm8916Pkg/Msm8916Pkg.dec
 
 [LibraryClasses]
+  BaseMemoryLib
   DebugLib
   UefiLib
   UefiDriverEntryPoint
@@ -28,6 +29,7 @@
   TimerLib
   LcmLib
   MallocLib
+  MemoryAllocationLib
   CacheMaintenanceLib
   InterruptsLib
   QcomPlatformMmcLib

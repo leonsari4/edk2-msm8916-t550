@@ -149,7 +149,7 @@ MxtReadRegRetry (
   EFI_STATUS Status = EFI_DEVICE_ERROR;
   UINTN      Retry;
 
-  for (Retry = 0; Retry < 3; Retry++) {
+  for (Retry = 0; Retry < 8; Retry++) {
     Status = MxtReadReg(Dev, Reg, Count, Buf);
     if (!EFI_ERROR(Status)) {
       return EFI_SUCCESS;
@@ -158,7 +158,7 @@ MxtReadRegRetry (
     DEBUG((EFI_D_ERROR,
            "maXTouch: read %u bytes @0x%04x failed (%r), retry %u\n",
            (UINT32)Count, (UINT32)Reg, Status, (UINT32)(Retry + 1)));
-    MicroSecondDelay(5000);
+    MicroSecondDelay(10000);
     GpioI2cInit(&Dev->Bus);
   }
 
@@ -199,7 +199,7 @@ MxtReadObjectTable (
     }
 
     Offset += Chunk;
-    MicroSecondDelay(1000);
+    MicroSecondDelay(5000);
   }
 
   return EFI_SUCCESS;
@@ -468,7 +468,7 @@ AtmelMaXTouchDxeInitialize (
   Dev->Signature        = TOUCH_DEV_SIGNATURE;
   Dev->Bus.SdaGpio      = FixedPcdGet32(PcdTouchI2cSdaGpio);
   Dev->Bus.SclGpio      = FixedPcdGet32(PcdTouchI2cSclGpio);
-  Dev->Bus.HalfPeriodUs = 5;
+  Dev->Bus.HalfPeriodUs = 10;
   Dev->Address          = FixedPcdGet8(PcdTouchI2cAddress);
   Dev->IntGpio          = FixedPcdGet32(PcdTouchIntGpio);
   Dev->PowerGpio        = FixedPcdGet32(PcdTouchPowerEnableGpio);

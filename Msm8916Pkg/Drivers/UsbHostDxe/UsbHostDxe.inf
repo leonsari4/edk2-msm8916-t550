@@ -26,6 +26,9 @@
   GpioI2cLib
   NonDiscoverableDeviceRegistrationLib
 
+[Protocols]
+  gEfiUsb2HcProtocolGuid
+
 [FixedPcd]
   gQcomTokenSpaceGuid.PcdOtgBoostI2cSdaGpio
   gQcomTokenSpaceGuid.PcdOtgBoostI2cSclGpio

@@ -1,6 +1,64 @@
 #include "MMCHS.h"
 #include <Library/DebugLib.h>
 
+/*
+ * Read the first two sectors and report what the partition driver will see.
+ * This distinguishes "card not detected" from "GPT present but not parsed"
+ * when a Windows-formatted SD card does not appear in the boot menu.
+ */
+STATIC VOID
+DumpPartitionTable (
+  IN BIO_INSTANCE  *Instance
+  )
+{
+  EFI_STATUS  Status;
+  UINTN       BlockSize = Instance->BlockMedia.BlockSize;
+  UINT8       *Buf;
+  UINT8       *Gpt;
+  UINT64      *Gpt64;
+
+  Buf = AllocatePool(BlockSize * 2);
+  if (Buf == NULL) {
+    return;
+  }
+
+  Status = Instance->BlockIo.ReadBlocks(
+                          &Instance->BlockIo,
+                          Instance->BlockMedia.MediaId,
+                          0,
+                          BlockSize * 2,
+                          Buf
+                          );
+  if (EFI_ERROR(Status)) {
+    DEBUG((DEBUG_ERROR, "MMCHS: partition table read failed: %r\n", Status));
+    FreePool(Buf);
+    return;
+  }
+
+  DEBUG((DEBUG_ERROR,
+         "MMCHS: block size %u, MBR sig %02x%02x type %02x start LBA %u\n",
+         (UINT32)BlockSize, Buf[511], Buf[510], Buf[446 + 4],
+         (UINT32)(Buf[446 + 8] | (Buf[446 + 9] << 8) |
+                  (Buf[446 + 10] << 16) | (Buf[446 + 11] << 24))));
+
+  Gpt = Buf + BlockSize;
+  if (CompareMem(Gpt, "EFI PART", 8) != 0) {
+    DEBUG((DEBUG_ERROR, "MMCHS: no GPT signature at LBA 1\n"));
+    FreePool(Buf);
+    return;
+  }
+
+  Gpt64 = (UINT64 *)(Gpt + 0x18);
+  DEBUG((DEBUG_ERROR,
+         "MMCHS: GPT rev %08x size %u myLBA %lu altLBA %lu first %lu last %lu entriesLBA %lu count %u entrySize %u\n",
+         *(UINT32 *)(Gpt + 0x08),
+         *(UINT32 *)(Gpt + 0x0C),
+         Gpt64[0], Gpt64[1], Gpt64[2], Gpt64[3], Gpt64[6],
+         *(UINT32 *)(Gpt + 0x50),
+         *(UINT32 *)(Gpt + 0x54)));
+  FreePool(Buf);
+}
+
 STATIC struct mmc_device *
 PlatformCallbackInitSlot(struct mmc_config_data *config)
 {
@@ -45,6 +103,8 @@ PlatformCallbackInitSlot(struct mmc_config_data *config)
       &Instance->Handle, &gEfiBlockIoProtocolGuid, &Instance->BlockIo,
       &gEfiDevicePathProtocolGuid, &Instance->DevicePath, NULL);
   ASSERT_EFI_ERROR(Status);
+
+  DumpPartitionTable(Instance);
 
   return dev;
 }
