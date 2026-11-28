@@ -18,6 +18,7 @@
 
 [LibraryClasses]
   UefiDriverEntryPoint
+  UefiBootServicesTableLib
   DebugLib
   IoLib
   TimerLib

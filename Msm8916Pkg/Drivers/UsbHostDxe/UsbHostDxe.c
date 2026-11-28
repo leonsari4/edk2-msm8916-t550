@@ -22,6 +22,7 @@
 
 #include <PiDxe.h>
 #include <Library/LKEnvLib.h>
+#include <Library/UefiBootServicesTableLib.h>
 #include <Library/IoLib.h>
 #include <Library/TimerLib.h>
 #include <Library/QcomGpioTlmmLib.h>
