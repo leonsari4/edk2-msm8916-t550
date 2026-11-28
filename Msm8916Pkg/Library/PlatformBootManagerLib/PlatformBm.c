@@ -32,6 +32,7 @@
 #include <Protocol/PciIo.h>
 #include <Protocol/PciRootBridgeIo.h>
 #include <Protocol/PlatformBootManager.h>
+#include <Protocol/SimpleFileSystem.h>
 
 #include "PlatformBm.h"
 
@@ -960,6 +961,60 @@ VOID HandleCapsules(VOID)
 #define VERSION_STRING_PREFIX L"Tianocore/EDK2 firmware version "
 
 /**
+  Log every mounted file system.  When an SD card is present but its boot
+  entry does not show up, this tells us whether the partition was found and
+  whether FatPkg recognized the volume.
+**/
+STATIC
+VOID
+PlatformLogFileSystems (
+  VOID
+  )
+{
+  EFI_STATUS                Status;
+  EFI_HANDLE                *Handles;
+  UINTN                     HandleCount;
+  UINTN                     Index;
+  EFI_DEVICE_PATH_PROTOCOL  *DevicePath;
+  CHAR16                    *Text;
+
+  Handles     = NULL;
+  HandleCount = 0;
+  Status      = gBS->LocateHandleBuffer(
+                       ByProtocol,
+                       &gEfiSimpleFileSystemProtocolGuid,
+                       NULL,
+                       &HandleCount,
+                       &Handles
+                       );
+  DEBUG((DEBUG_ERROR, "PlatformBm: SimpleFs handles=%u status=%r\n",
+         (UINT32)HandleCount, Status));
+  if (EFI_ERROR(Status)) {
+    return;
+  }
+
+  for (Index = 0; Index < HandleCount; Index++) {
+    DevicePath = NULL;
+    Status = gBS->HandleProtocol(
+                    Handles[Index],
+                    &gEfiDevicePathProtocolGuid,
+                    (VOID **)&DevicePath
+                    );
+    Text = NULL;
+    if (!EFI_ERROR(Status)) {
+      Text = ConvertDevicePathToText(DevicePath, FALSE, FALSE);
+    }
+    DEBUG((DEBUG_ERROR, "PlatformBm: SimpleFs[%u] %s\n",
+           (UINT32)Index, Text != NULL ? Text : L"<no path>"));
+    if (Text != NULL) {
+      FreePool(Text);
+    }
+  }
+
+  FreePool(Handles);
+}
+
+/**
   Do the platform specific action after the console is ready
   Possible things that can be done in PlatformBootManagerAfterConsole:
   > Console post action:
@@ -998,6 +1053,7 @@ VOID EFIAPI PlatformBootManagerAfterConsole(VOID)
   //
   EfiBootManagerConnectAll();
   DEBUG((DEBUG_ERROR, "PlatformBm: ConnectAll done\n"));
+  PlatformLogFileSystems();
 
   //
   // On ARM, there is currently no reason to use the phased capsule
